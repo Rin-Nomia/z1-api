@@ -1,0 +1,93 @@
+name: 同步 z1_mvp 並部署 API
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  SOURCE_REPO: YOUR_GITHUB_USERNAME/z1_mvp  # 🔥 改成你的 GitHub 用戶名
+  HF_USERNAME: YOUR_HF_USERNAME              # 🔥 改成你的 HF 用戶名
+  HF_SPACE: z1-tone-api
+
+jobs:
+  sync_and_deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 關卡 1：抓取當前 repo (z1-api)
+      - name: 關卡 1 - Checkout z1-api
+        uses: actions/checkout@v4
+        with:
+          path: z1-api
+      
+      # 關卡 2：抓取 z1_mvp
+      - name: 關卡 2 - Checkout z1_mvp
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          token: ${{ secrets.GH_PAT }}  # 使用你已有的 GitHub Token
+          path: z1_mvp
+      
+      # 關卡 3：複製資料夾（自動化！）
+      - name: 關卡 3 - 複製 pipeline, core, configs
+        run: |
+          echo "📦 開始複製資料夾..."
+          
+          # 複製 pipeline
+          cp -r z1_mvp/pipeline z1-api/
+          echo "✅ pipeline/ 已複製"
+          
+          # 複製 core
+          cp -r z1_mvp/core z1-api/
+          echo "✅ core/ 已複製"
+          
+          # 複製 configs
+          cp -r z1_mvp/configs z1-api/
+          echo "✅ configs/ 已複製"
+          
+          # 檢查檔案
+          ls -lh z1-api/
+      
+      # 關卡 4：設定 Python
+      - name: 關卡 4 - Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      # 關卡 5：測試 Pipeline
+      - name: 關卡 5 - 測試 Pipeline 是否正常
+        working-directory: z1-api
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          pip install -r requirements.txt
+          
+          # 簡單測試
+          python -c "
+          from pipeline.z1_pipeline import Z1Pipeline
+          pipeline = Z1Pipeline(debug=True)
+          result = pipeline.process('測試文字')
+          print('✅ Pipeline 測試成功')
+          print(f'類型: {result[\"freq_type\"]}')
+          print(f'信心值: {result[\"confidence\"][\"final\"]:.2f}')
+          "
+      
+      # 關卡 6：部署到 HuggingFace
+      - name: 關卡 6 - 部署到 HuggingFace
+        working-directory: z1-api
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pip install huggingface_hub
+          
+          huggingface-cli login --token $HF_TOKEN
+          
+          huggingface-cli upload \
+            ${{ env.HF_USERNAME }}/${{ env.HF_SPACE }} \
+            . \
+            --repo-type=space \
+            --commit-message="Auto deploy Z1 API"
+          
+          echo "✅ 部署完成"
+          echo "📍 API URL: https://${{ env.HF_USERNAME }}-${{ env.HF_SPACE }}.hf.space"
