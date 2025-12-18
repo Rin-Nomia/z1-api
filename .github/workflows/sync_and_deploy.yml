@@ -47,7 +47,18 @@ jobs:
           echo "✅ configs/ 已複製"
           
           # 檢查檔案
+          echo ""
+          echo "📂 檔案結構："
           ls -lh z1-api/
+          echo ""
+          echo "📂 pipeline 內容："
+          ls -lh z1-api/pipeline/
+          echo ""
+          echo "📂 core 內容："
+          ls -lh z1-api/core/
+          echo ""
+          echo "📂 configs 內容："
+          ls -lh z1-api/configs/
       
       # 關卡 4：設定 Python
       - name: 關卡 4 - Setup Python
@@ -55,23 +66,74 @@ jobs:
         with:
           python-version: "3.11"
       
-      # 關卡 5：測試 Pipeline
+      # 關卡 5：測試 Pipeline（修正版）
       - name: 關卡 5 - 測試 Pipeline 是否正常
         working-directory: z1-api
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          echo "📦 安裝依賴..."
           pip install -r requirements.txt
           
-          # 簡單測試
-          python -c "
+          echo ""
+          echo "🧪 開始測試 Pipeline"
+          echo "================================"
+          
+          # 測試 Pipeline（含錯誤處理）
+          python << 'PYTEST'
           from pipeline.z1_pipeline import Z1Pipeline
+          import json
+          
+          print("初始化 Pipeline...")
           pipeline = Z1Pipeline(debug=True)
-          result = pipeline.process('測試文字')
-          print('✅ Pipeline 測試成功')
-          print(f'類型: {result[\"freq_type\"]}')
-          print(f'信心值: {result[\"confidence\"][\"final\"]:.2f}')
-          "
+          print("✅ Pipeline 初始化成功")
+          print()
+          
+          # 測試 1：短文字（可能太短）
+          print("🧪 測試 1：短文字")
+          print("-" * 50)
+          result1 = pipeline.process('測試文字')
+          
+          if result1.get('error'):
+              print(f"⚠️  短文字觸發錯誤（這是正常的）")
+              print(f"   原因：{result1.get('reason')}")
+              print(f"   最小長度要求：可能需要更長的文字")
+          else:
+              print(f"✅ 短文字測試成功")
+              print(f"   類型：{result1['freq_type']}")
+              print(f"   信心值：{result1['confidence']['final']:.2f}")
+          
+          print()
+          
+          # 測試 2：正常長度文字（標準測試案例）
+          print("🧪 測試 2：正常長度文字")
+          print("-" * 50)
+          test_text = "I don't know what to do anymore. Everything I try fails. Can someone please help me?"
+          print(f"測試文字：{test_text}")
+          print()
+          
+          result2 = pipeline.process(test_text)
+          
+          if result2.get('error'):
+              print(f"❌ Pipeline 測試失敗")
+              print(f"   錯誤原因：{result2.get('reason')}")
+              print(f"   完整結果：{json.dumps(result2, indent=2, ensure_ascii=False)}")
+              exit(1)
+          else:
+              print(f"✅ Pipeline 測試成功！")
+              print()
+              print(f"📊 分析結果：")
+              print(f"   類型：{result2['freq_type']}")
+              print(f"   信心值：{result2['confidence']['final']:.2f}")
+              print(f"   場景：{result2['output']['scenario']}")
+              print(f"   場景信心：{result2['output']['scenario_confidence']:.2f}")
+              
+              if result2['output'].get('repaired_text'):
+                  print(f"   修復文字：{result2['output']['repaired_text'][:80]}...")
+              
+              print()
+              print(f"🎉 所有測試通過！API 可以正常運作")
+          PYTEST
       
       # 關卡 6：部署到 HuggingFace
       - name: 關卡 6 - 部署到 HuggingFace
@@ -79,15 +141,33 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
+          echo "📦 安裝 HuggingFace CLI..."
           pip install huggingface_hub
           
+          echo ""
+          echo "🔐 登入 HuggingFace..."
           huggingface-cli login --token $HF_TOKEN
           
+          echo ""
+          echo "📤 上傳到 HuggingFace Space..."
           huggingface-cli upload \
             ${{ env.HF_USERNAME }}/${{ env.HF_SPACE }} \
             . \
             --repo-type=space \
-            --commit-message="Auto deploy Z1 API"
+            --commit-message="Auto deploy Z1 API [$(date +'%Y-%m-%d %H:%M:%S')]"
           
-          echo "✅ 部署完成"
-          echo "📍 API URL: https://${{ env.HF_USERNAME }}-${{ env.HF_SPACE }}.hf.space"
+          echo ""
+          echo "================================"
+          echo "✅ 部署完成！"
+          echo "================================"
+          echo ""
+          echo "📍 API 端點："
+          echo "   健康檢查：https://${{ env.HF_USERNAME }}-${{ env.HF_SPACE }}.hf.space/health"
+          echo "   API 文件：https://${{ env.HF_USERNAME }}-${{ env.HF_SPACE }}.hf.space/docs"
+          echo "   分析端點：https://${{ env.HF_USERNAME }}-${{ env.HF_SPACE }}.hf.space/api/v1/analyze"
+          echo ""
+          echo "🧪 測試指令："
+          echo "   curl https://${{ env.HF_USERNAME }}-${{ env.HF_SPACE }}.hf.space/health"
+          echo ""
+          echo "⏳ 注意：HuggingFace Space 需要 2-5 分鐘啟動"
+          echo "================================"
