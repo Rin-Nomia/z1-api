@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  HF_USERNAME: YOUR_HF_USERNAME  # 改成你的 HuggingFace 用戶名
+  HF_USERNAME: RinNomia  # 改成你的 HuggingFace 用戶名
   HF_SPACE_NAME: z1-tone-api     # Space 名稱
 
 jobs:
