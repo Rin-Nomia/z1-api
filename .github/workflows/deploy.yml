@@ -24,13 +24,119 @@ jobs:
         with:
           python-version: "3.11"
       
-      # 關卡 3：安裝 HuggingFace CLI（修正版）
-      - name: Install HuggingFace CLI
+      # 關卡 3：安裝依賴
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install huggingface_hub[cli]
+          pip install gitpython
       
-      # 關卡 4：部署到 HuggingFace Spaces（用 Python API）
+      # 關卡 3.5：測試 GitHub 備份功能
+      - name: Test GitHub Backup
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_REPO: ${{ secrets.GH_REPO }}
+        run: |
+          echo "🧪 測試 GitHub 備份功能"
+          echo "=" * 60
+          
+          # 設定 git
+          git config --global user.name "Z1 API Test"
+          git config --global user.email "test@z1api.dev"
+          
+          # 執行測試腳本
+          python << 'PYTEST'
+          import os
+          import json
+          import subprocess
+          from datetime import datetime
+          
+          print("📋 步驟 1: 檢查環境變數")
+          print("-" * 60)
+          
+          gh_token = os.environ.get('GH_TOKEN')
+          gh_repo = os.environ.get('GH_REPO')
+          
+          if not gh_token:
+              print("❌ GH_TOKEN 未設定")
+              exit(1)
+          print(f"✅ GH_TOKEN 已設定（長度: {len(gh_token)}）")
+          
+          if not gh_repo:
+              print("❌ GH_REPO 未設定")
+              exit(1)
+          print(f"✅ GH_REPO 已設定: {gh_repo}")
+          print()
+          
+          print("📋 步驟 2: 建立測試數據")
+          print("-" * 60)
+          
+          # 建立 logs 資料夾
+          os.makedirs('logs', exist_ok=True)
+          
+          # 寫入測試數據
+          test_data = {
+              'timestamp': datetime.now().isoformat(),
+              'input': {'text': 'GitHub backup test', 'length': 19},
+              'output': {'freq_type': 'Test', 'confidence': 1.0},
+              'metadata': {'test': True, 'source': 'github_actions'}
+          }
+          
+          date_str = datetime.now().strftime('%Y-%m-%d')
+          log_file = f'logs/analysis_{date_str}.jsonl'
+          
+          with open(log_file, 'a', encoding='utf-8') as f:
+              f.write(json.dumps(test_data, ensure_ascii=False) + '\n')
+          
+          print(f"✅ 測試數據已寫入: {log_file}")
+          print()
+          
+          print("📋 步驟 3: 初始化 Git")
+          print("-" * 60)
+          
+          os.chdir('logs')
+          
+          # Git 初始化
+          subprocess.run(['git', 'init'], check=True)
+          subprocess.run(['git', 'config', 'user.name', 'Z1 API Test'], check=True)
+          subprocess.run(['git', 'config', 'user.email', 'test@z1api.dev'], check=True)
+          
+          # 設定 remote
+          remote_url = f'https://{gh_token}@github.com/{gh_repo}.git'
+          subprocess.run(['git', 'remote', 'add', 'origin', remote_url], 
+                        stderr=subprocess.DEVNULL)
+          
+          print("✅ Git 初始化完成")
+          print()
+          
+          print("📋 步驟 4: 提交並推送")
+          print("-" * 60)
+          
+          subprocess.run(['git', 'add', '.'], check=True)
+          subprocess.run(['git', 'commit', '-m', 
+                         f'Test backup from GitHub Actions [{datetime.now().isoformat()}]'],
+                        check=True)
+          
+          result = subprocess.run(['git', 'push', '-u', 'origin', 'main', '--force'],
+                                 capture_output=True, text=True)
+          
+          if result.returncode == 0:
+              print("✅ 推送成功！")
+          else:
+              print(f"❌ 推送失敗: {result.stderr}")
+              exit(1)
+          
+          print()
+          print("=" * 60)
+          print("✅ GitHub 備份測試完成！")
+          print("=" * 60)
+          print()
+          print(f"📍 驗證連結: https://github.com/{gh_repo}")
+          print(f"   應該會看到 analysis_{date_str}.jsonl")
+          print("=" * 60)
+          PYTEST
+      
+      # 關卡 4：部署到 HuggingFace Spaces
       - name: Deploy to HuggingFace
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -79,7 +185,7 @@ jobs:
                   repo_id=repo_id,
                   repo_type="space",
                   commit_message=f"Auto deploy [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]",
-                  ignore_patterns=[".git", ".github", "*.pyc", "__pycache__"]
+                  ignore_patterns=[".git", ".github", "*.pyc", "__pycache__", "logs"]
               )
               print("✅ 上傳成功！")
           except Exception as e:
@@ -113,3 +219,7 @@ jobs:
           echo ""
           echo "🧪 測試 API 健康檢查"
           curl -f "$API_URL/health" || echo "⚠️  API 尚未就緒，請稍後手動測試"
+          
+          echo ""
+          echo "🧪 測試備份端點"
+          curl -X POST -f "$API_URL/api/v1/test-backup" || echo "⚠️  測試端點尚未就緒"
