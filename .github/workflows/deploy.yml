@@ -12,7 +12,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # 🔥 增加整體 job timeout
+    timeout-minutes: 30
     
     steps:
       - name: Checkout repository
@@ -145,7 +145,6 @@ jobs:
           print(f"🚀 部署 Z1 API 到 HuggingFace Space: {repo_id}")
           print()
           
-          # 🔥 增加 timeout
           api = HfApi(token=token)
           
           try:
@@ -168,7 +167,7 @@ jobs:
           print("📤 上傳檔案中...")
           print("⏳ 這可能需要 1-3 分鐘...")
           
-          # 🔥 重試機制
+          # 🔥 重試機制（不用 multi_commits 參數）
           max_retries = 3
           retry_delay = 10
           
@@ -176,6 +175,7 @@ jobs:
               try:
                   print(f"   嘗試 {attempt + 1}/{max_retries}...")
                   
+                  # 🔥 移除不存在的參數
                   api.upload_folder(
                       folder_path=".",
                       repo_id=repo_id,
@@ -189,10 +189,7 @@ jobs:
                           "logs",
                           ".gitignore",
                           "README.md"
-                      ],
-                      # 🔥 不要多線程上傳（避免 timeout）
-                      multi_commits=False,
-                      multi_commits_verbose=False
+                      ]
                   )
                   
                   print("✅ 上傳成功！")
@@ -205,9 +202,10 @@ jobs:
                   if attempt < max_retries - 1:
                       print(f"   {retry_delay} 秒後重試...")
                       time.sleep(retry_delay)
-                      retry_delay *= 2  # 指數退避
+                      retry_delay *= 2
                   else:
                       print(f"❌ 上傳失敗（已重試 {max_retries} 次）")
+                      print(f"   最後錯誤：{error_msg}")
                       exit(1)
           
           print()
