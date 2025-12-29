@@ -33,27 +33,51 @@ class DataLogger:
         output_result: Dict[str, Any],
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """記錄一次分析"""
+        """記錄一次分析 - 完整版"""
+        
+        # 從 pipeline 結果提取所有需要的數據
         entry = {
             'timestamp': datetime.now().isoformat(),
+            
+            # ===== 輸入數據 =====
             'input': {
                 'text': input_text,
+                'original': output_result.get('original', input_text),  # Pipeline 處理後的原文
                 'length': len(input_text),
+                'char_count': len(input_text),
                 'word_count': len(input_text.split()),
                 'language': self._detect_language(input_text)
             },
+            
+            # ===== 核心輸出 =====
             'output': {
                 'freq_type': output_result.get('freq_type'),
-                'confidence': output_result.get('confidence', {}).get('final'),
+                
+                # 完整的 confidence 三階段
+                'confidence': {
+                    'initial': output_result.get('confidence', {}).get('initial'),
+                    'adjusted': output_result.get('confidence', {}).get('adjusted'),
+                    'final': output_result.get('confidence', {}).get('final')
+                },
+                
+                # 場景和修復
                 'scenario': output_result.get('output', {}).get('scenario'),
+                'mode': output_result.get('output', {}).get('mode'),
                 'repaired_text': output_result.get('output', {}).get('repaired_text'),
-                'mode': output_result.get('mode')
             },
+            
+            # ===== 節奏分析（完整） =====
             'rhythm': {
-                'rin_score': output_result.get('rhythm', {}).get('total'),
+                'total': output_result.get('rhythm', {}).get('total'),
                 'speed_index': output_result.get('rhythm', {}).get('speed_index'),
-                'emotion_rate': output_result.get('rhythm', {}).get('emotion_rate')
+                'emotion_rate': output_result.get('rhythm', {}).get('emotion_rate'),
+                'details': output_result.get('rhythm', {}).get('details', {})  # fast/medium/slow
             },
+            
+            # ===== 模式識別（重要！） =====
+            'patterns': output_result.get('patterns', {}),
+            
+            # ===== Metadata =====
             'metadata': metadata or {}
         }
         
@@ -107,7 +131,9 @@ class DataLogger:
         tones = []
         scenarios = []
         languages = []
-        confidences = []
+        confidences_initial = []
+        confidences_adjusted = []
+        confidences_final = []
         modes = []
         
         # 讀取分析記錄
@@ -124,9 +150,14 @@ class DataLogger:
                             languages.append(data['input']['language'])
                             modes.append(data['output'].get('mode', 'unknown'))
                             
-                            conf = data['output'].get('confidence')
-                            if conf is not None:
-                                confidences.append(conf)
+                            # 三階段 confidence
+                            conf = data['output'].get('confidence', {})
+                            if conf.get('initial') is not None:
+                                confidences_initial.append(conf['initial'])
+                            if conf.get('adjusted') is not None:
+                                confidences_adjusted.append(conf['adjusted'])
+                            if conf.get('final') is not None:
+                                confidences_final.append(conf['final'])
                         except:
                             continue
         
@@ -159,10 +190,20 @@ class DataLogger:
                 'scenario_distribution': dict(Counter(scenarios)),
                 'language_distribution': dict(Counter(languages)),
                 'mode_distribution': dict(Counter(modes)),
-                'avg_confidence': (
-                    sum(confidences) / len(confidences)
-                    if confidences else 0
-                )
+                'confidence': {
+                    'avg_initial': (
+                        sum(confidences_initial) / len(confidences_initial)
+                        if confidences_initial else 0
+                    ),
+                    'avg_adjusted': (
+                        sum(confidences_adjusted) / len(confidences_adjusted)
+                        if confidences_adjusted else 0
+                    ),
+                    'avg_final': (
+                        sum(confidences_final) / len(confidences_final)
+                        if confidences_final else 0
+                    )
+                }
             },
             'feedback': {
                 'total': total_feedback,
@@ -226,7 +267,7 @@ class GitHubBackup:
         try:
             # 初始化 git（如果還沒）
             if not os.path.exists(os.path.join(self.log_dir, '.git')):
-                subprocess.run(['git', 'init'], cwd=self.log_dir)
+                subprocess.run(['git', 'init', '-b', 'main'], cwd=self.log_dir)
                 subprocess.run(['git', 'config', 'user.name', 'Z1 API'], cwd=self.log_dir)
                 subprocess.run(['git', 'config', 'user.email', 'api@z1.dev'], cwd=self.log_dir)
                 subprocess.run([
