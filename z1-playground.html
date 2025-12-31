@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Z1 Tone Firewall - API Playground</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+        
+        .tagline {
+            color: #888;
+            font-size: 0.9em;
+        }
+        
+        .input-section {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 12px;
+            color: #e0e0e0;
+            font-size: 1em;
+            resize: vertical;
+            font-family: inherit;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+        
+        button {
+            width: 100%;
+            background: #4a9eff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #3a8eef;
+        }
+        
+        button:disabled {
+            background: #333;
+            cursor: not-allowed;
+        }
+        
+        .result-section {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            display: none;
+        }
+        
+        .result-section.show {
+            display: block;
+        }
+        
+        .result-item {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+        
+        .result-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .result-label {
+            color: #888;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .result-value {
+            color: #fff;
+            font-size: 1.05em;
+        }
+        
+        .tone-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        
+        .tone-anxious { background: #ff6b6b; color: #fff; }
+        .tone-cold { background: #4dabf7; color: #fff; }
+        .tone-sharp { background: #ff922b; color: #fff; }
+        .tone-blur { background: #868e96; color: #fff; }
+        .tone-pushy { background: #f783ac; color: #fff; }
+        .tone-unknown { background: #333; color: #888; }
+        
+        .confidence {
+            display: inline-block;
+            margin-left: 10px;
+            color: #888;
+            font-size: 0.9em;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+        }
+        
+        .error {
+            background: #2d1f1f;
+            border: 1px solid #ff6b6b;
+            border-radius: 4px;
+            padding: 12px;
+            color: #ff6b6b;
+            margin-top: 15px;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+            color: #666;
+            font-size: 0.85em;
+        }
+        
+        footer a {
+            color: #4a9eff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💎 Z1 Tone Firewall</h1>
+            <p class="tagline">Detect and repair tone issues before they become communication failures</p>
+        </header>
+        
+        <div class="input-section">
+            <textarea 
+                id="inputText" 
+                placeholder="輸入你想分析的文字... 
+                
+例如：
+• 你到底要不要做決定？
+• 我不知道欸，你覺得呢
+• 這個不行，換別的"
+            ></textarea>
+            <button id="analyzeBtn" onclick="analyzeText()">分析語氣</button>
+            <div id="errorMsg" class="error" style="display:none;"></div>
+        </div>
+        
+        <div id="resultSection" class="result-section">
+            <div class="result-item">
+                <div class="result-label">偵測語氣</div>
+                <div class="result-value" id="toneType"></div>
+            </div>
+            
+            <div class="result-item">
+                <div class="result-label">原始文字</div>
+                <div class="result-value" id="originalText"></div>
+            </div>
+            
+            <div class="result-item">
+                <div class="result-label">修復後文字</div>
+                <div class="result-value" id="repairedText"></div>
+            </div>
+            
+            <div class="result-item">
+                <div class="result-label">情境分類</div>
+                <div class="result-value" id="scenario"></div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>API: <a href="https://rinnomia-z1-tone-api.hf.space/docs" target="_blank">rinnomia-z1-tone-api.hf.space</a></p>
+            <p>95% accuracy • 5 tone types • 8-stage pipeline</p>
+        </footer>
+    </div>
+
+    <script>
+        const API_URL = 'https://rinnomia-z1-tone-api.hf.space/api/v1/analyze';
+        
+        async function analyzeText() {
+            const inputText = document.getElementById('inputText').value.trim();
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const resultSection = document.getElementById('resultSection');
+            const errorMsg = document.getElementById('errorMsg');
+            
+            // 清除錯誤訊息
+            errorMsg.style.display = 'none';
+            
+            // 驗證輸入
+            if (!inputText) {
+                showError('請輸入要分析的文字');
+                return;
+            }
+            
+            // 顯示載入狀態
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = '分析中...';
+            resultSection.classList.remove('show');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: inputText })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API 錯誤: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayResults(data);
+                
+            } catch (error) {
+                showError(`分析失敗: ${error.message}`);
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = '分析語氣';
+            }
+        }
+        
+        function displayResults(data) {
+            const toneTypeEl = document.getElementById('toneType');
+            const originalTextEl = document.getElementById('originalText');
+            const repairedTextEl = document.getElementById('repairedText');
+            const scenarioEl = document.getElementById('scenario');
+            const resultSection = document.getElementById('resultSection');
+            
+            // 語氣標籤
+            const toneClass = `tone-${data.freq_type.toLowerCase()}`;
+            const confidencePercent = (data.confidence * 100).toFixed(0);
+            
+            toneTypeEl.innerHTML = `
+                <span class="tone-badge ${toneClass}">${data.freq_type}</span>
+                <span class="confidence">${confidencePercent}% 信心度</span>
+            `;
+            
+            // 文字內容
+            originalTextEl.textContent = data.original;
+            repairedTextEl.textContent = data.repaired_text || '無需修復';
+            scenarioEl.textContent = data.scenario || '未分類';
+            
+            // 顯示結果
+            resultSection.classList.add('show');
+        }
+        
+        function showError(message) {
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.textContent = message;
+            errorMsg.style.display = 'block';
+        }
+        
+        // Enter 鍵支援（Shift+Enter 換行）
+        document.getElementById('inputText').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                analyzeText();
+            }
+        });
+    </script>
+</body>
+</html>
