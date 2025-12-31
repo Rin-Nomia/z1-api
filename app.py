@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Z1 Tone Firewall API",
     version="1.0.0",
-    description="AI-powered tone detection and repair"
+    description="AI-powered tone detection and repair for complete sentences"
 )
 
 app.add_middleware(
@@ -51,7 +51,7 @@ class AnalyzeResponse(BaseModel):
     confidence: float
     scenario: str
     repaired_text: Optional[str] = None
-    repair_note: Optional[str] = None  # 新增：說明為何無法修復
+    repair_note: Optional[str] = None
     log_id: Optional[str] = None
 
 class FeedbackRequest(BaseModel):
@@ -60,26 +60,51 @@ class FeedbackRequest(BaseModel):
     helpful: int = Field(..., ge=1, le=5)
     accepted: bool
 
-# ===== 誠實回應函數 =====
-def generate_honest_response(text: str, freq_type: str, confidence: float) -> tuple[str, str]:
+# ===== 情境化回應函數 =====
+def generate_contextual_response(text: str, freq_type: str, confidence: float) -> tuple[str, str]:
     """
-    當無法確定語氣時，誠實告知並給建議
+    根據文字長度和信心度給出合理回應
+    
+    Args:
+        text: 原始文字
+        freq_type: 語氣類型
+        confidence: 信心度
     
     Returns:
         (repaired_text, repair_note)
     """
-    # 保持原文不改
-    repaired = text
+    text_len = len(text.strip())
     
-    # 根據不同情況給不同說明
-    if len(text) < 10:
-        note = "此訊息較短，語氣判斷信心度較低。建議：增加具體描述或情境說明，以利準確判斷語氣。"
+    # 情況 1：短句 (<10 字)
+    if text_len < 10:
+        return (
+            text,
+            f"此訊息較短（{text_len} 字）。Z1 專注於完整句子（建議 15 字以上）的語氣分析，以獲得最準確的判斷結果。"
+        )
+    
+    # 情況 2：中等長度 + 低信心 (10-20 字, <0.4)
+    elif text_len < 20 and confidence < 0.4:
+        return (
+            text,
+            f"語氣判斷信心度 {int(confidence*100)}%。Z1 在完整、明確的句子上表現最佳，建議將表達擴充為更完整的句子以獲得更精準的分析。"
+        )
+    
+    # 情況 3：Unknown 類型
+    elif freq_type == "Unknown":
+        return (
+            text,
+            "此訊息的語氣特徵不明確。Z1 專注於完整句子的語氣分析，建議使用更具體、完整的表達方式以獲得準確判斷。"
+        )
+    
+    # 情況 4：一般低信心 (<0.3)
     elif confidence < 0.3:
-        note = f"系統對此語氣的判斷信心度為 {int(confidence*100)}%，建議人工確認是否需要調整表達方式。"
-    else:
-        note = "此訊息的語氣分類不明確，無法提供修復建議。原文已保留，請根據實際情境判斷是否需要調整。"
+        return (
+            text,
+            f"系統判斷信心度 {int(confidence*100)}%。建議人工確認是否需要調整表達方式。"
+        )
     
-    return repaired, note
+    # 不應該走到這裡
+    return (text, None)
 
 # ===== 背景任務：定期備份 =====
 async def periodic_backup():
@@ -113,6 +138,7 @@ async def root():
         "message": "Z1 Tone Firewall API",
         "version": "1.0.0",
         "model": "claude-haiku-4-5-20251001",
+        "focus": "Complete sentence tone analysis (15+ characters recommended)",
         "docs": "/docs"
     }
 
@@ -127,7 +153,7 @@ async def health():
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest):
-    """分析語氣"""
+    """分析語氣（建議輸入完整句子以獲得最佳結果）"""
     if not pipeline:
         raise HTTPException(503, "Pipeline not ready")
     
@@ -146,12 +172,12 @@ async def analyze(request: AnalyzeRequest):
         
         # 處理 Unknown 或低信心度的情況
         if freq_type == "Unknown" or confidence < 0.3:
-            repaired_text, repair_note = generate_honest_response(
+            repaired_text, repair_note = generate_contextual_response(
                 text=request.text,
                 freq_type=freq_type,
                 confidence=confidence
             )
-            logger.info(f"ℹ️ Low confidence repair: {freq_type} @ {confidence:.2f}")
+            logger.info(f"ℹ️ Contextual response: len={len(request.text)}, type={freq_type}, conf={confidence:.2f}")
         
         # 記錄數據
         log_id = None
@@ -165,7 +191,8 @@ async def analyze(request: AnalyzeRequest):
                         'api_version': 'v1',
                         'truncated': result.get('truncated', False),
                         'low_confidence': confidence < 0.3,
-                        'repair_note': repair_note
+                        'text_length': len(request.text),
+                        'has_repair_note': repair_note is not None
                     }
                 )
                 log_id = log_entry.get('timestamp')
