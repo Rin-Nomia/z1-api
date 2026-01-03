@@ -34,12 +34,6 @@ jobs:
         run: |
           echo "📦 開始複製資料夾..."
           
-          # 先刪除舊的 (如果存在)
-          rm -rf continuum-api/pipeline
-          rm -rf continuum-api/core
-          rm -rf continuum-api/configs
-          
-          # 複製新的
           cp -r z1_mvp/pipeline continuum-api/
           echo "✅ pipeline/ 已複製"
           
@@ -52,12 +46,6 @@ jobs:
           echo ""
           echo "📂 檔案結構："
           ls -lh continuum-api/
-          
-          echo ""
-          echo "📂 確認關鍵檔案："
-          ls -lh continuum-api/pipeline/
-          ls -lh continuum-api/core/
-          ls -lh continuum-api/configs/
       
       # 關卡 4：設定 Python
       - name: 關卡 4 - Setup Python
@@ -79,36 +67,6 @@ jobs:
           echo "================================"
           
           python << 'PYTEST'
-          import sys
-          import os
-          
-          # 確認檔案存在
-          print("🔍 檢查檔案...")
-          required_files = [
-              'pipeline/z1_pipeline.py',
-              'core/normalizer.py',
-              'core/classifier.py',
-              'configs/settings.yaml',
-              'configs/keywords.json',
-              'configs/templates.json'
-          ]
-          
-          missing_files = []
-          for file_path in required_files:
-              if not os.path.exists(file_path):
-                  missing_files.append(file_path)
-                  print(f"❌ 缺少: {file_path}")
-              else:
-                  print(f"✅ 存在: {file_path}")
-          
-          if missing_files:
-              print(f"\n❌ 缺少 {len(missing_files)} 個檔案！")
-              exit(1)
-          
-          print("\n✅ 所有必要檔案都存在")
-          print()
-          
-          # 測試 Pipeline
           from pipeline.z1_pipeline import Z1Pipeline
           
           print("初始化 Pipeline...")
@@ -158,12 +116,9 @@ jobs:
           
           api = HfApi(token=token)
           
-          # 檢查 Space 是否存在
           try:
-              space_info = api.space_info(repo_id)
+              api.space_info(repo_id)
               print(f"✅ Space 已存在：{repo_id}")
-              print(f"   Runtime: {space_info.runtime}")
-              print(f"   SDK: {space_info.sdk}")
           except Exception as e:
               print(f"⚠️  Space 不存在，將自動建立")
               try:
@@ -179,89 +134,33 @@ jobs:
           
           print()
           print("📤 上傳檔案中...")
-          print("   這可能需要 1-2 分鐘...")
           
           try:
-              # 上傳整個資料夾
-              commit_info = api.upload_folder(
+              api.upload_folder(
                   folder_path=".",
                   repo_id=repo_id,
                   repo_type="space",
-                  commit_message=f"Auto deploy Continuum API [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]",
-                  ignore_patterns=[
-                      ".git",
-                      ".github",
-                      "*.pyc",
-                      "__pycache__",
-                      "logs",
-                      ".gitignore"
-                  ]
+                  commit_message=f"Auto deploy Continuum API [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
               )
               print("✅ 上傳成功！")
-              print(f"   Commit URL: {commit_info.commit_url}")
           except Exception as e:
               print(f"❌ 上傳失敗：{e}")
-              import traceback
-              traceback.print_exc()
               exit(1)
           
           print()
-          print("=" * 60)
+          print("================================")
           print("🎉 部署完成！")
-          print("=" * 60)
-          print()
-          print("📍 Space URL:")
-          print(f"   https://huggingface.co/spaces/{repo_id}")
+          print("================================")
           print()
           print("📍 API 端點：")
-          username_lower = username.lower()
-          print(f"   健康檢查：https://{username_lower}-{space_name}.hf.space/health")
-          print(f"   API 文件：https://{username_lower}-{space_name}.hf.space/docs")
-          print(f"   分析端點：https://{username_lower}-{space_name}.hf.space/api/v1/analyze")
+          print(f"   健康檢查：https://rinnomia-{space_name}.hf.space/health")
+          print(f"   API 文件：https://rinnomia-{space_name}.hf.space/docs")
+          print(f"   分析端點：https://rinnomia-{space_name}.hf.space/api/v1/analyze")
           print()
           print("🧪 測試指令：")
-          print(f"   curl https://{username_lower}-{space_name}.hf.space/health")
+          print(f"   curl https://rinnomia-{space_name}.hf.space/health")
           print()
           print("⏳ 注意：HuggingFace Space 需要 2-5 分鐘啟動")
           print("   請稍後訪問上面的 URL")
-          print("=" * 60)
+          print("================================")
           PYDEPLOY
-```
-
----
-
-## **主要改動:**
-
-1. ✅ **加了檔案檢查** - 確認所有必要檔案都被複製了
-2. ✅ **先刪除舊檔案** - 避免衝突
-3. ✅ **更詳細的 log** - 方便 debug
-4. ✅ **修正 username** - 改成小寫 (HuggingFace URL 是小寫)
-5. ✅ **加了 ignore_patterns** - 不上傳不需要的檔案
-
----
-
-## **現在立刻做:**
-
-### **Step 1: 檢查 HuggingFace Secrets**
-
-**去這裡:**
-```
-https://huggingface.co/spaces/RinNomia/continuum-api/settings
-```
-
-**往下滑到「Variables and secrets」**
-
-**確認有:**
-```
-ANTHROPIC_API_KEY = sk-ant-xxxxx
-```
-
-**如果沒有,加上去!**
-
----
-
-### **Step 2: 更新 Workflow**
-
-**用我上面給你的完整版覆蓋:**
-```
-.github/workflows/sync_and_deploy.yml
