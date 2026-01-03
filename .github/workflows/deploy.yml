@@ -215,8 +215,8 @@ jobs:
           print(f"   https://huggingface.co/spaces/{repo_id}")
           print()
           print("📍 API 端點：")
-          print(f"   https://{username}-{space_name}.hf.space/health")
-          print(f"   https://{username}-{space_name}.hf.space/docs")
+          print(f"   https://rinnomia-{space_name}.hf.space/health")
+          print(f"   https://rinnomia-{space_name}.hf.space/docs")
           print()
           print("⏳ 注意：Space 需要 2-5 分鐘啟動")
           print("=" * 50)
@@ -227,7 +227,7 @@ jobs:
           echo "⏳ 等待 Space 啟動（60 秒）..."
           sleep 60
           
-          API_URL="https://${{ env.HF_USERNAME }}-${{ env.HF_SPACE_NAME }}.hf.space"
+          API_URL="https://rinnomia-${{ env.HF_SPACE_NAME }}.hf.space"
           
           echo ""
           echo "🧪 測試 API 健康檢查"
