@@ -1,5 +1,5 @@
 ---
-title: Z1 Tone API
+title: Continuum API
 emoji: 💎
 colorFrom: blue
 colorTo: purple
@@ -8,13 +8,14 @@ sdk_version: "{{sdkVersion}}"
 app_file: app.py
 pinned: false
 ---
-# Z1 Tone Firewall API
+# Continuum API — RIN Protocol
 
+Tone Rhythm Repair Module  
 自動從 z1_mvp 同步並部署
 
 ## 🏗️ 架構
 ```
-z1-api (本 repo)
+continuum-api (本 repo)
   ├── app.py              ← 你建立的
   ├── requirements.txt    ← 你建立的
   └── .github/workflows/  ← 你建立的
@@ -36,12 +37,12 @@ z1-api (本 repo)
 
 ### 健康檢查
 ```bash
-GET https://Rin-Nomia-z1-tone-api.hf.space/health
+GET https://rinnomia-continuum-api.hf.space/health
 ```
 
 ### 單句分析
 ```bash
-POST https://Rin-Nomia-z1-tone-api.hf.space/api/v1/analyze
+POST https://rinnomia-continuum-api.hf.space/api/v1/analyze
 
 {
   "text": "你的文字"
@@ -62,8 +63,8 @@ POST https://Rin-Nomia-z1-tone-api.hf.space/api/v1/analyze
 ## 📖 API 文件
 
 部署後訪問：
-- Swagger UI: `https://Rin-Nomia-z1-tone-api.hf.space/docs`
-- ReDoc: `https://Rin-Nomia-z1-tone-api.hf.space/redoc`
+- Swagger UI: `https://rinnomia-continuum-api.hf.space/docs`
+- ReDoc: `https://rinnomia-continuum-api.hf.space/redoc`
 
 ## ⚙️ 設定步驟
 
@@ -71,7 +72,7 @@ POST https://Rin-Nomia-z1-tone-api.hf.space/api/v1/analyze
 
 1. 去 https://huggingface.co/spaces
 2. 點 "Create new Space"
-3. 名稱：`z1-tone-api`
+3. 名稱：`continuum-api`
 4. SDK：選 `Docker`
 5. Visibility: Public
 6. Create
@@ -87,7 +88,7 @@ POST https://Rin-Nomia-z1-tone-api.hf.space/api/v1/analyze
 ### 3. 觸發部署
 
 1. 進入 **Actions** 頁籤
-2. 選擇 "同步 z1_mvp 並部署 API"
+2. 選擇 "同步 z1_mvp 並部署 Continuum API"
 3. 點 **Run workflow**
 4. 等待 5-10 分鐘
 
@@ -100,10 +101,10 @@ POST https://Rin-Nomia-z1-tone-api.hf.space/api/v1/analyze
 ## 🧪 測試
 ```bash
 # 測試健康檢查
-curl https://Rin-Nomia-z1-tone-api.hf.space/health
+curl https://rinnomia-continuum-api.hf.space/health
 
 # 測試分析
-curl -X POST https://Rin-Nomia-z1-tone-api.hf.space/api/v1/analyze \
+curl -X POST https://rinnomia-continuum-api.hf.space/api/v1/analyze \
   -H "Content-Type: application/json" \
   -d '{"text": "測試文字"}'
 ```
@@ -124,135 +125,11 @@ curl -X POST https://Rin-Nomia-z1-tone-api.hf.space/api/v1/analyze \
 ## 🔗 相關連結
 
 - z1_mvp repo: https://github.com/Rin-Nomia/z1_mvp
-- HuggingFace Space: https://huggingface.co/spaces/Rin-Nomia/z1-tone-api
-- API Docs: https://Rin-Nomia-z1-tone-api.hf.space/docs
+- HuggingFace Space: https://huggingface.co/spaces/RinNomia/continuum-api
+- API Docs: https://rinnomia-continuum-api.hf.space/docs
+- Playground: https://rin-nomia.github.io/continuum-api/playground.html
 
 ---
 
-Built with ❤️ by Rin | Powered by Claude 4
-```
-
----
-
-## 🎯 操作步驟（完整版）
-
-### Step 1：建立新 Repo
-```
-1. 去 https://github.com/Rin-Nomia
-2. 點右上角 "+" → "New repository"
-3. Repository name: z1-api
-4. Description: Z1 Tone Firewall API
-5. Public
-6. 不要勾選 "Add a README file"
-7. Create repository
-```
-
----
-
-### Step 2：建立檔案 1 - app.py
-```
-1. 在新建立的 z1-api repo 頁面
-2. 點 "creating a new file"
-3. 檔案名稱輸入：app.py
-4. 複製上面「檔案 1」的完整內容
-5. 貼到編輯器
-6. 下方 Commit 訊息：Create app.py
-7. 點 "Commit new file"
-```
-
----
-
-### Step 3：建立檔案 2 - requirements.txt
-```
-1. 回到 z1-api repo 首頁
-2. 點 "Add file" → "Create new file"
-3. 檔案名稱：requirements.txt
-4. 複製上面「檔案 2」的完整內容
-5. 貼上
-6. Commit new file
-```
-
----
-
-### Step 4：建立檔案 3 - workflow
-```
-1. 回到 z1-api repo 首頁
-2. 點 "Add file" → "Create new file"
-3. 檔案名稱：.github/workflows/sync_and_deploy.yml
-   ⚠️ 注意：要完整輸入路徑，包含 .github/workflows/
-4. 複製上面「檔案 3」的完整內容（已改好你的用戶名）
-5. 貼上
-6. Commit new file
-```
-
----
-
-### Step 5：建立檔案 4 - README
-```
-1. 回到 z1-api repo 首頁
-2. 點 "Add file" → "Create new file"
-3. 檔案名稱：README.md
-4. 複製上面「檔案 4」的完整內容（已改好你的用戶名）
-5. 貼上
-6. Commit new file
-```
-
----
-
-### Step 6：建立 HuggingFace Space
-```
-1. 去 https://huggingface.co/spaces
-2. 點右上角 "Create new Space"
-3. 填寫：
-   - Owner: Rin-Nomia
-   - Space name: z1-tone-api
-   - License: Apache 2.0（或任何）
-   - Select the Space SDK: Docker
-   - Visibility: Public
-4. 點 "Create Space"
-```
-
----
-
-### Step 7：觸發部署
-```
-1. 回到 GitHub z1-api repo
-2. 點上方 "Actions" 頁籤
-3. 左側會看到 "同步 z1_mvp 並部署 API"
-4. 點進去
-5. 右側點 "Run workflow"
-6. 選 "Branch: main"
-7. 點綠色 "Run workflow" 按鈕
-8. 等待執行（5-10 分鐘）
-```
-
----
-
-### Step 8：查看結果
-```
-執行完成後：
-
-1. 如果成功：
-   ✅ 綠色勾勾
-   ✅ 訪問 https://Rin-Nomia-z1-tone-api.hf.space/docs
-   ✅ 看到 API 文件
-
-2. 如果失敗：
-   ❌ 紅色叉叉
-   → 點進去看哪一關失敗
-   → 告訴我錯誤訊息
-```
-
----
-
-## ✅ 檢查清單
-
-在開始前確認：
-```
-□ GitHub 帳號：Rin-Nomia ✅
-□ HuggingFace 帳號：Rin-Nomia ✅（假設跟 GitHub 一樣）
-□ z1_mvp repo 存在 ✅
-□ GitHub Secrets 已設定：
-  □ GH_PAT
-  □ HF_TOKEN
-  □ ANTHROPIC_API_KEY
+**RIN Protocol — Continuum**  
+Built with ❤️ by Rin | Powered by Claude Haiku 4
