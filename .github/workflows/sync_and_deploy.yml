@@ -8,7 +8,7 @@ on:
 env:
   SOURCE_REPO: Rin-Nomia/z1_mvp
   HF_USERNAME: RinNomia
-  HF_SPACE: z1-tone-api
+  HF_SPACE: continuum-api
 
 jobs:
   sync_and_deploy:
