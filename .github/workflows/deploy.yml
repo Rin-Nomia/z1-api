@@ -1,4 +1,4 @@
-name: Deploy Z1 API to HuggingFace
+name: Deploy Continuum API to HuggingFace
 
 on:
   push:
@@ -36,8 +36,8 @@ jobs:
         run: |
           echo "🧪 測試 GitHub 備份功能"
           
-          git config --global user.name "Z1 API Test"
-          git config --global user.email "test@z1api.dev"
+          git config --global user.name "Continuum API Test"
+          git config --global user.email "test@continuum-api.dev"
           git config --global init.defaultBranch main
           
           python << 'PYTEST'
@@ -90,8 +90,8 @@ jobs:
           os.chdir('logs')
           
           subprocess.run(['git', 'init', '-b', 'main'], check=True)
-          subprocess.run(['git', 'config', 'user.name', 'Z1 API Test'], check=True)
-          subprocess.run(['git', 'config', 'user.email', 'test@z1api.dev'], check=True)
+          subprocess.run(['git', 'config', 'user.name', 'Continuum API Test'], check=True)
+          subprocess.run(['git', 'config', 'user.email', 'test@continuum-api.dev'], check=True)
           
           remote_url = f'https://{gh_token}@github.com/{gh_repo}.git'
           subprocess.run(['git', 'remote', 'add', 'origin', remote_url], 
@@ -142,7 +142,7 @@ jobs:
           space_name = os.environ['HF_SPACE_NAME']
           repo_id = f"{username}/{space_name}"
           
-          print(f"🚀 部署 Z1 API 到 HuggingFace Space: {repo_id}")
+          print(f"🚀 部署 Continuum API 到 HuggingFace Space: {repo_id}")
           print()
           
           api = HfApi(token=token)
@@ -167,7 +167,6 @@ jobs:
           print("📤 上傳檔案中...")
           print("⏳ 這可能需要 1-3 分鐘...")
           
-          # 🔥 重試機制（不用 multi_commits 參數）
           max_retries = 3
           retry_delay = 10
           
@@ -175,7 +174,6 @@ jobs:
               try:
                   print(f"   嘗試 {attempt + 1}/{max_retries}...")
                   
-                  # 🔥 移除不存在的參數
                   api.upload_folder(
                       folder_path=".",
                       repo_id=repo_id,
