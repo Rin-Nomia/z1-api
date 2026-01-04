@@ -110,47 +110,5 @@ jobs:
           print("=" * 50)
           PYDEPLOY
 ```
-
 ---
 
-### **檔案 3: `utils/logger.py`（你的版本是對的，不用改）**
-
-保持你現在的版本即可。
-
----
-
-### **檔案 4: `.gitignore`（加入這個，避免上傳不必要的東西）**
-```
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
-build/
-
-# Logs
-logs/
-*.log
-
-# Environment
-.env
-.env.local
-venv/
-env/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Git
-.git/
-.github/
