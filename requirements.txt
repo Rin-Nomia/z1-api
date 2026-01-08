@@ -8,3 +8,4 @@ anthropic>=0.25.0
 tenacity==8.2.3
 ratelimit==2.2.1
 gitpython
+requests>=2.31.0
