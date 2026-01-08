@@ -1,200 +1,223 @@
 """
-Continuum Logger - GitHub API Version
-For cloud environments like Hugging Face Spaces
+logger.py
+Continuum Logger (HF Space friendly)
+
+Provides:
+- DataLogger: log_analysis / log_feedback / get_stats
+- GitHubBackup: optional restore hook (safe no-op by default)
+
+Design goals:
+- Never break the API if logging fails
+- Avoid GitHub SHA race conditions by writing ONE FILE PER EVENT
+- Works in Hugging Face Spaces using Secrets:
+    GITHUB_TOKEN = GitHub Fine-grained PAT (Contents: Read & Write)
+    GITHUB_REPO  = "owner/repo" (e.g., "Rin-Nomia/continuum-logs")
 """
+
+from __future__ import annotations
 
 import json
 import os
-import base64
+import time
+import uuid
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict, Optional
+
 import requests
 
 
-class ContinuumLogger:
-    """Logger using GitHub API"""
-    
+def _utc_dates():
+    now = datetime.utcnow()
+    return (
+        now.strftime("%Y-%m"),   # year_month
+        now.strftime("%Y%m%d"),  # date_str
+        now.strftime("%H%M%S"),  # time_str
+    )
+
+
+class GitHubWriter:
+    """
+    Minimal GitHub Contents API writer.
+    Writes one file per event to avoid SHA conflicts.
+    """
+
     def __init__(self):
-        """Initialize Logger"""
-        self.github_token = os.environ.get('GITHUB_TOKEN')
-        self.github_repo = os.environ.get('GITHUB_REPO')
-        
-        if not self.github_token or not self.github_repo:
-            print("GitHub credentials not set, logging disabled")
-            self.enabled = False
-        else:
-            self.enabled = True
-            print(f"Logger enabled, repo: {self.github_repo}")
-    
-    def log_request(
-        self,
-        input_text: str,
-        mode: str,
-        freq_type: str,
-        confidence: float,
-        scenario: str,
-        scenario_confidence: float,
-        rhythm: Dict[str, float],
-        repair_mode: str,
-        repair_method: str,
-        repaired_text: str,
-        processing_time_ms: float,
-        api_calls: int = 1,
-        api_cost_usd: float = 0.0
-    ) -> str:
-        """Log a request"""
-        
+        self.github_token = os.environ.get("GITHUB_TOKEN")
+        self.github_repo = os.environ.get("GITHUB_REPO")  # owner/repo
+
+        self.enabled = bool(self.github_token and self.github_repo)
+
+        # Use a stable UA to reduce GitHub API quirks
+        self.headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "continuum-api-logger",
+        }
+        if self.github_token:
+            # GitHub accepts both "token" and "Bearer"; token is classic, Bearer is fine-grained friendly too.
+            self.headers["Authorization"] = f"Bearer {self.github_token}"
+
+    def _put_file(self, path: str, payload: Dict[str, Any]) -> bool:
+        """
+        Create/overwrite a single file via PUT.
+        Returns True on success.
+        """
         if not self.enabled:
-            return "logging_disabled"
-        
-        timestamp = datetime.utcnow().isoformat() + "Z"
-        session_id = self._generate_session_id()
-        
-        log_entry = {
-            "timestamp": timestamp,
-            "session_id": session_id,
+            return False
+
+        url = f"https://api.github.com/repos/{self.github_repo}/contents/{path}"
+
+        content_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        b64 = __import__("base64").b64encode(content_bytes).decode("utf-8")
+
+        data = {
+            "message": f"Add log {payload.get('id', '')}".strip(),
+            "content": b64,
+        }
+
+        try:
+            r = requests.put(url, headers=self.headers, json=data, timeout=15)
+            # 201 created, 200 updated
+            if r.status_code in (200, 201):
+                return True
+            # Useful debug line (won't crash API)
+            print(f"[GitHubWriter] PUT failed {r.status_code}: {r.text[:200]}")
+            return False
+        except Exception as e:
+            print(f"[GitHubWriter] PUT exception: {e}")
+            return False
+
+    def write_event(self, category: str, event: Dict[str, Any], event_id: str) -> bool:
+        """
+        Write event as a unique file:
+          logs/<YYYY-MM>/<YYYYMMDD>/<category>/<event_id>.json
+        """
+        year_month, date_str, _ = _utc_dates()
+        path = f"logs/{year_month}/{date_str}/{category}/{event_id}.json"
+        return self._put_file(path, event)
+
+
+class DataLogger:
+    """
+    API-facing logger used by app.py.
+
+    Methods:
+    - log_analysis(input_text, output_result, metadata) -> dict
+    - log_feedback(log_id, accuracy, helpful, accepted) -> dict
+    - get_stats() -> dict
+    """
+
+    def __init__(self, log_dir: str = "logs"):
+        self.log_dir = log_dir
+        self.writer = GitHubWriter()
+
+        # in-memory counters (safe minimal stats; persists only within runtime)
+        self._analysis_count = 0
+        self._feedback_count = 0
+        self._last_analysis_ts: Optional[str] = None
+
+        if self.writer.enabled:
+            print(f"[DataLogger] GitHub logging enabled -> {os.environ.get('GITHUB_REPO')}")
+        else:
+            print("[DataLogger] GitHub credentials not set; logging will be local-only (in-memory stats).")
+
+    @staticmethod
+    def _new_id(prefix: str) -> str:
+        # short, URL-safe
+        return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+    def log_analysis(self, input_text: str, output_result: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Create a new analysis log event and (optionally) ship to GitHub.
+        Returns a dict containing 'timestamp' which app.py uses as log_id.
+        """
+        ts = datetime.utcnow().isoformat() + "Z"
+        event_id = self._new_id("a")
+
+        payload = {
+            "id": event_id,
+            "timestamp": ts,
+            "type": "analysis",
             "input": {
                 "text": input_text,
                 "text_length": len(input_text),
-                "mode": mode
             },
-            "detection": {
-                "freq_type": freq_type,
-                "confidence": confidence,
-                "scenario": scenario,
-                "scenario_confidence": scenario_confidence,
-                "rhythm": rhythm
+            "result": output_result,
+            "metadata": metadata or {},
+            "runtime": {
+                "source": "hf_space",
             },
-            "repair": {
-                "mode": repair_mode,
-                "method": repair_method,
-                "repaired_text": repaired_text,
-                "text_length": len(repaired_text),
-                "length_change": len(repaired_text) - len(input_text)
-            },
-            "performance": {
-                "processing_time_ms": processing_time_ms,
-                "api_calls": api_calls,
-                "api_cost_usd": api_cost_usd
-            },
-            "flags": self._generate_flags(
-                freq_type, confidence, repair_mode, 
-                input_text, repaired_text
-            )
         }
-        
-        try:
-            self._write_to_github(log_entry)
-        except Exception as e:
-            print(f"Failed to write log: {e}")
-        
-        return session_id
-    
-    def _generate_session_id(self) -> str:
-        """Generate random session ID"""
-        import random
-        import string
-        chars = string.ascii_lowercase + string.digits
-        return ''.join(random.choices(chars, k=8))
-    
-    def _generate_flags(
-        self,
-        freq_type: str,
-        confidence: float,
-        repair_mode: str,
-        input_text: str,
-        repaired_text: str
-    ) -> Dict[str, bool]:
-        """Generate flags automatically"""
-        flags = {
-            "unknown_type": freq_type == "Unknown",
-            "low_confidence": confidence < 0.4,
-            "manual_review_needed": repair_mode == "manual_review",
-            "repair_quality_concern": False
+
+        # Update minimal stats
+        self._analysis_count += 1
+        self._last_analysis_ts = ts
+
+        # Write to GitHub if enabled (failure must not break API)
+        if self.writer.enabled:
+            ok = self.writer.write_event(category="analysis", event=payload, event_id=event_id)
+            if not ok:
+                # still return a log_id; API continues
+                payload["github_write"] = "failed"
+
+        # app.py expects log.get("timestamp") as log_id
+        return {"timestamp": event_id, "created_at": ts}
+
+    def log_feedback(self, log_id: str, accuracy: int, helpful: int, accepted: bool) -> Dict[str, Any]:
+        ts = datetime.utcnow().isoformat() + "Z"
+        event_id = self._new_id("f")
+
+        payload = {
+            "id": event_id,
+            "timestamp": ts,
+            "type": "feedback",
+            "target_log_id": log_id,
+            "feedback": {
+                "accuracy": accuracy,
+                "helpful": helpful,
+                "accepted": accepted,
+            },
         }
-        
-        if repair_mode == "repair":
-            concerns = self._detect_repair_concerns(input_text, repaired_text, confidence)
-            flags["repair_quality_concern"] = len(concerns) > 0
-        
-        return flags
-    
-    def _detect_repair_concerns(
-        self,
-        input_text: str,
-        repaired_text: str,
-        confidence: float
-    ) -> list:
-        """Detect repair quality issues"""
-        concerns = []
-        
-        input_len = len(input_text)
-        repaired_len = len(repaired_text)
-        
-        if input_len > 0:
-            length_change_pct = abs(repaired_len - input_len) / input_len
-            if length_change_pct > 0.5:
-                concerns.append("length_change_too_large")
-        
-        if repaired_len > 200:
-            concerns.append("repaired_text_too_long")
-        
-        if confidence < 0.5:
-            concerns.append("low_confidence_repair")
-        
-        warning_words = ["career", "relationship", "family", "health", "money"]
-        input_words = set(input_text.lower().split())
-        repaired_words = set(repaired_text.lower().split())
-        added_words = repaired_words - input_words
-        
-        if any(word in added_words for word in warning_words):
-            concerns.append("added_sensitive_context")
-        
-        return concerns
-    
-    def _write_to_github(self, log_entry: Dict[str, Any]):
-        """Write log to GitHub via API"""
-        
-        date_str = datetime.utcnow().strftime("%Y%m%d")
-        year_month = datetime.utcnow().strftime("%Y-%m")
-        file_path = f"logs/{year_month}/{date_str}.jsonl"
-        
-        log_line = json.dumps(log_entry, ensure_ascii=False) + '\n'
-        
-        url = f"https://api.github.com/repos/{self.github_repo}/contents/{file_path}"
-        headers = {
-            "Authorization": f"token {self.github_token}",
-            "Accept": "application/vnd.github.v3+json"
+
+        self._feedback_count += 1
+
+        if self.writer.enabled:
+            ok = self.writer.write_event(category="feedback", event=payload, event_id=event_id)
+            if not ok:
+                payload["github_write"] = "failed"
+
+        return {"status": "ok", "feedback_id": event_id, "created_at": ts}
+
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Minimal stats that never break.
+        If you later want 'real stats from GitHub logs', we can add a separate scheduled job.
+        """
+        return {
+            "logger": {
+                "enabled": self.writer.enabled,
+                "repo": os.environ.get("GITHUB_REPO") if self.writer.enabled else None,
+            },
+            "counts": {
+                "analyses_in_runtime": self._analysis_count,
+                "feedback_in_runtime": self._feedback_count,
+            },
+            "last_analysis_utc": self._last_analysis_ts,
         }
-        
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            
-            if response.status_code == 200:
-                file_data = response.json()
-                existing_content = base64.b64decode(file_data['content']).decode('utf-8')
-                new_content = existing_content + log_line
-                sha = file_data['sha']
-            else:
-                new_content = log_line
-                sha = None
-            
-            encoded_content = base64.b64encode(new_content.encode('utf-8')).decode('utf-8')
-            
-            data = {
-                "message": f"Add log {log_entry['session_id']}",
-                "content": encoded_content
-            }
-            
-            if sha:
-                data["sha"] = sha
-            
-            response = requests.put(url, headers=headers, json=data, timeout=10)
-            
-            if response.status_code in [200, 201]:
-                print(f"Log written: {log_entry['session_id']}")
-            else:
-                print(f"GitHub API error: {response.status_code}")
-        
-        except Exception as e:
-            print(f"Failed to write log: {e}")
+
+
+class GitHubBackup:
+    """
+    Compatibility class: app.py calls GitHubBackup(...).restore()
+    For this stable version, restore is intentionally a safe no-op.
+
+    If later you want "restore last logs to local", we can implement,
+    but HF Spaces typically don't rely on local disk logs.
+    """
+
+    def __init__(self, log_dir: str = "logs"):
+        self.log_dir = log_dir
+
+    def restore(self) -> None:
+        # Safe no-op: do not break startup
+        print("[GitHubBackup] restore() skipped (no-op)")
+        return
