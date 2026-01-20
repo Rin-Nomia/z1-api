@@ -14,58 +14,28 @@ pinned: false
 **Tone Misalignment Firewall**  
 語氣錯頻辨識 × 節奏修復 API
 
-Continuum is not a sentiment analyzer.  
-It is a **tone safety layer** designed to prevent conversational breakdowns caused by misaligned tone, rhythm, or pressure.
+Continuum is **not** a sentiment analyzer.  
+It is a **tone safety layer** designed to prevent conversational breakdowns caused by misaligned tone, rhythm, or pressure — especially in empathic or companion-style AI systems.
 
 ---
 
 ## 🧠 What This System Does (Plain Language)
 
-Given a single sentence, Continuum will:
+Given a **single sentence**, Continuum will:
 
-1. **Analyze rhythm & emotional pressure**
-2. **Classify tone misalignment type**  
+1. **Normalize and gate the input**  
+   (length, language, safety checks)
+2. **Analyze rhythm and emotional pressure**  
+   (speed, intensity, pause patterns)
+3. **Classify tone misalignment type**  
    (Anxious / Cold / Sharp / Blur / Pushy)
-3. **Estimate confidence of the judgment**
-4. **Decide whether to:**
+4. **Estimate confidence of the judgment**
+5. **Decide whether to:**
    - repair the tone
-   - suggest adjustment
-   - or leave it untouched
+   - suggest an adjustment
+   - or leave it untouched (safe)
 
-This prevents over-correction and preserves the user’s original intent.
-
----
-
-## 🚫 What This System Explicitly Does NOT Do
-
-- ❌ No sentiment scoring (positive / negative)
-- ❌ No intent guessing
-- ❌ No hidden-meaning inference
-- ❌ No psychological diagnosis
-- ❌ No multi-turn memory (single-sentence only)
-
-These are **Phase 2 features** and intentionally disabled in MVP.
-
----
-
-## 🏗️ Architecture Overview
-
-Input Text
-↓
-Normalization & Length Gate
-↓
-Rhythm Analysis (speed / emotion / pause)
-↓
-Tone Classification (rule-based + margin confidence)
-↓
-Confidence Calibration (rhythm-aware)
-↓
-Router
-├── repair     (high confidence)
-├── suggest    (medium confidence)
-└── no-op      (safe / neutral)
-↓
-Output
+This design prevents over-correction and preserves the user’s original intent.
 
 ---
 
@@ -77,7 +47,7 @@ Output
 - **Blur** — vague, ambiguous, unclear
 - **Pushy** — pressing, demanding, urgency-driven
 
-> Neutral / safe tone is explicitly supported and will not be modified.
+> Neutral or safe tone is explicitly supported and will **not** be modified.
 
 ---
 
@@ -94,21 +64,83 @@ Output
 
 ---
 
+## 🏗️ Architecture Overview
+Input Text
+↓
+Normalization & Length Gate
+↓
+Rhythm Analysis (speed / emotion / pause)
+↓
+Tone Classification (rule-based + margin confidence)
+↓
+Confidence Calibration (rhythm-aware)
+↓
+Router
+├── repair     (high confidence)
+├── suggest    (medium confidence)
+└── no-op      (safe / neutral)
+↓
+Output
+---
+
+## 🚫 What This System Explicitly Does NOT Do
+
+Continuum is **intentionally limited** by design.
+
+It does **not** perform:
+
+- ❌ Sentiment scoring (positive / negative)
+- ❌ Intent guessing or hidden-meaning inference
+- ❌ Psychological diagnosis or mental health evaluation
+- ❌ Multi-turn memory or long-term user profiling
+- ❌ Clinical or therapeutic intervention
+
+These are **out of scope** for the MVP.
+
+---
+
+## 🛑 Safety & Capability Boundaries (Important)
+
+Continuum is **not designed** to handle:
+
+- Suicidal ideation or immediate self-harm risk
+- Severe mental health crises
+- Situations requiring emergency intervention or clinical judgment
+
+In such cases, the system will default to **conservative behavior**  
+(`Unknown` / `no-op`) to avoid harmful over-intervention.
+
+> **Design principle:**  
+> Continuum only intervenes where **tone affects AI response quality**  
+> but **does not cross into crisis or medical territory**.
+
+It is a **preventive, non-therapeutic tone repair layer**,  
+meant to improve conversational safety — not replace safety or crisis systems.
+
+---
+
+## 🧩 Design Philosophy
+
+- Explainable over powerful  
+- Predictable over clever  
+- Safety gates over maximal recall  
+- User voice preserved at all times  
+
+Continuum is designed as a **pre-LLM tone firewall**, not a replacement for the model itself.
+
+---
+
 ## 🚀 API Endpoints
 
 ### Health Check
 ```bash
 GET /health
-
 Analyze Single Sentence
-
 POST /api/v1/analyze
 {
   "text": "your input text"
 }
-
 Response Example
-
 {
   "freq_type": "Anxious",
   "confidence": {
@@ -120,37 +152,27 @@ Response Example
   }
 }
 
-
-⸻
-
-🧩 Design Philosophy
-	•	Explainable over powerful
-	•	Predictable over clever
-	•	Safety gates over maximal recall
-	•	User voice preserved
-
-Continuum is designed as a pre-LLM safety layer for empathic systems, not a replacement for them.
-
-⸻
-
 🔄 Sync & Deployment
 
-This repo automatically syncs pipeline, core logic, and configs from:
+This repository automatically syncs pipeline, core logic, and configs from:
 
 🔗 https://github.com/Rin-Nomia/z1_mvp
 
-Do not edit synced files directly.
+⚠️ Do not edit synced files directly.
+All logic changes should be made in z1_mvp.
 
 ⸻
 
 🛣️ Phase 2 (Out of Scope)
+
+The following capabilities are intentionally excluded from the MVP:
 	•	Multi-label tone blending
 	•	Hidden meaning inference
-	•	Relationship / context awareness
+	•	Relationship or long-term context awareness
 	•	Multi-turn conversation repair
 	•	Culture-specific tone policies
 
-These will be introduced behind explicit feature gates.
+These will only be introduced behind explicit feature gates.
 
 ⸻
 
@@ -164,5 +186,3 @@ These will be introduced behind explicit feature gates.
 RIN Protocol — Continuum
 Tone safety before intelligence
 Built by Rin Nomia
-
----
