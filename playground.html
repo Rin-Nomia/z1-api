@@ -5,12 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Continuum - API Playground</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             background: #0a0a0a;
@@ -18,29 +14,15 @@
             padding: 20px;
             line-height: 1.6;
         }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        
-        header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-        
-        h1 {
-            font-size: 2em;
-            margin-bottom: 10px;
-            color: #fff;
-        }
-        
-        .tagline {
-            color: #888;
-            font-size: 0.9em;
-            margin-bottom: 8px;
-        }
-        
+
+        .container { max-width: 800px; margin: 0 auto; }
+
+        header { text-align: center; margin-bottom: 40px; }
+
+        h1 { font-size: 2em; margin-bottom: 10px; color: #fff; }
+
+        .tagline { color: #888; font-size: 0.9em; margin-bottom: 8px; }
+
         .notice {
             background: #1a2332;
             border: 1px solid #2d3e54;
@@ -51,11 +33,9 @@
             text-align: center;
             margin-top: 12px;
         }
-        
-        .notice strong {
-            color: #4a9eff;
-        }
-        
+
+        .notice strong { color: #4a9eff; }
+
         .input-section {
             background: #1a1a1a;
             border: 1px solid #333;
@@ -63,7 +43,7 @@
             padding: 20px;
             margin-bottom: 20px;
         }
-        
+
         .example-buttons {
             margin-top: 15px;
             margin-bottom: 10px;
@@ -72,7 +52,7 @@
             gap: 8px;
             justify-content: center;
         }
-        
+
         .example-btn {
             width: auto;
             padding: 8px 16px;
@@ -86,26 +66,19 @@
             cursor: pointer;
             transition: background 0.2s;
         }
-        
-        .example-btn:hover {
-            background: #3d4e64;
-        }
-        
+
+        .example-btn:hover { background: #3d4e64; }
+
         .char-counter {
             text-align: right;
             color: #666;
             font-size: 0.85em;
             margin-top: 8px;
         }
-        
-        .char-counter.warning {
-            color: #ff922b;
-        }
-        
-        .char-counter.good {
-            color: #51cf66;
-        }
-        
+
+        .char-counter.warning { color: #ff922b; }
+        .char-counter.good { color: #51cf66; }
+
         textarea {
             width: 100%;
             min-height: 120px;
@@ -118,12 +91,9 @@
             resize: vertical;
             font-family: inherit;
         }
-        
-        textarea:focus {
-            outline: none;
-            border-color: #4a9eff;
-        }
-        
+
+        textarea:focus { outline: none; border-color: #4a9eff; }
+
         button {
             width: 100%;
             background: #4a9eff;
@@ -137,16 +107,10 @@
             margin-top: 15px;
             transition: background 0.2s;
         }
-        
-        button:hover {
-            background: #3a8eef;
-        }
-        
-        button:disabled {
-            background: #333;
-            cursor: not-allowed;
-        }
-        
+
+        button:hover { background: #3a8eef; }
+        button:disabled { background: #333; cursor: not-allowed; }
+
         .result-section {
             background: #1a1a1a;
             border: 1px solid #333;
@@ -154,23 +118,17 @@
             padding: 20px;
             display: none;
         }
-        
-        .result-section.show {
-            display: block;
-        }
-        
+
+        .result-section.show { display: block; }
+
         .result-item {
             margin-bottom: 20px;
             padding-bottom: 20px;
             border-bottom: 1px solid #333;
         }
-        
-        .result-item:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }
-        
+
+        .result-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
         .result-label {
             color: #888;
             font-size: 0.85em;
@@ -178,12 +136,9 @@
             letter-spacing: 0.5px;
             margin-bottom: 8px;
         }
-        
-        .result-value {
-            color: #fff;
-            font-size: 1.05em;
-        }
-        
+
+        .result-value { color: #fff; font-size: 1.05em; }
+
         .repair-note {
             background: #1a2332;
             border-left: 3px solid #4a9eff;
@@ -193,7 +148,7 @@
             font-size: 0.9em;
             border-radius: 4px;
         }
-        
+
         .tone-badge {
             display: inline-block;
             padding: 4px 12px;
@@ -201,33 +156,26 @@
             font-size: 0.9em;
             font-weight: 600;
         }
-        
+
         .tone-anxious { background: #ff6b6b; color: #fff; }
         .tone-cold { background: #4dabf7; color: #fff; }
         .tone-sharp { background: #ff922b; color: #fff; }
         .tone-blur { background: #868e96; color: #fff; }
         .tone-pushy { background: #f783ac; color: #fff; }
         .tone-unknown { background: #333; color: #888; }
-        
+        .tone-outofscope { background: #7b2cbf; color: #fff; }
+
         .confidence {
             display: inline-block;
             margin-left: 10px;
             color: #888;
             font-size: 0.9em;
         }
-        
-        .confidence.low {
-            color: #ff922b;
-        }
-        
-        .confidence.medium {
-            color: #ffd43b;
-        }
-        
-        .confidence.high {
-            color: #51cf66;
-        }
-        
+
+        .confidence.low { color: #ff922b; }
+        .confidence.medium { color: #ffd43b; }
+        .confidence.high { color: #51cf66; }
+
         .error {
             background: #2d1f1f;
             border: 1px solid #ff6b6b;
@@ -237,7 +185,7 @@
             margin-top: 15px;
             font-size: 0.9em;
         }
-        
+
         footer {
             text-align: center;
             margin-top: 40px;
@@ -246,15 +194,9 @@
             color: #666;
             font-size: 0.85em;
         }
-        
-        footer a {
-            color: #4a9eff;
-            text-decoration: none;
-        }
-        
-        footer p {
-            margin: 8px 0;
-        }
+
+        footer a { color: #4a9eff; text-decoration: none; }
+        footer p { margin: 8px 0; }
     </style>
 </head>
 <body>
@@ -266,10 +208,10 @@
                 <strong>💡 Best Practice:</strong> Enter complete sentences (15+ characters recommended) for accurate tone analysis
             </div>
         </header>
-        
+
         <div class="input-section">
-            <textarea 
-                id="inputText" 
+            <textarea
+                id="inputText"
                 placeholder="Enter a complete sentence for best results (15+ characters recommended)...
 
 Try these examples:
@@ -284,55 +226,47 @@ Sharp:
 
 Cold:
 - I understand. Let's focus on what you can control.
-- That sounds difficult. What steps have you tried so far?
 
 Note: Messages under 15 characters may not provide accurate tone analysis."
             ></textarea>
-            
+
             <div class="example-buttons">
-                <button type="button" class="example-btn" onclick="loadExample(1)">
-                    Anxious Example
-                </button>
-                <button type="button" class="example-btn" onclick="loadExample(2)">
-                    Sharp Example
-                </button>
-                <button type="button" class="example-btn" onclick="loadExample(3)">
-                    Cold Example
-                </button>
+                <button type="button" class="example-btn" onclick="loadExample(1)">Anxious Example</button>
+                <button type="button" class="example-btn" onclick="loadExample(2)">Sharp Example</button>
+                <button type="button" class="example-btn" onclick="loadExample(3)">Cold Example</button>
             </div>
-            
+
             <div id="charCounter" class="char-counter">0 characters</div>
             <button id="analyzeBtn" onclick="analyzeText()">Analyze Tone</button>
             <div id="errorMsg" class="error" style="display:none;"></div>
         </div>
-        
+
         <div id="resultSection" class="result-section">
             <div class="result-item">
                 <div class="result-label">Detected Tone</div>
                 <div class="result-value" id="toneType"></div>
             </div>
-            
+
             <div class="result-item">
                 <div class="result-label">Original Text</div>
                 <div class="result-value" id="originalText"></div>
             </div>
-            
+
             <div class="result-item">
                 <div class="result-label">Repaired Text</div>
                 <div class="result-value" id="repairedText"></div>
                 <div id="repairNote" class="repair-note" style="display:none;"></div>
             </div>
-            
+
             <div class="result-item">
                 <div class="result-label">Scenario</div>
                 <div class="result-value" id="scenario"></div>
             </div>
         </div>
-        
+
         <footer>
             <p><strong>Continuum</strong> — RIN Protocol | Tone Rhythm Repair Module</p>
             <p>API: <a href="https://rinnomia-continuum-api.hf.space/docs" target="_blank">rinnomia-continuum-api.hf.space</a></p>
-            <p>95% accuracy on complete sentences (15+ chars recommended) • 3 core tone types • 8-stage pipeline • Bilingual (EN/ZH)</p>
             <p style="margin-top: 10px; font-size: 0.8em; color: #666;">
                 Best results with full sentences. Short phrases may show limited analysis.
             </p>
@@ -341,77 +275,67 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
 
     <script>
         const API_URL = 'https://rinnomia-continuum-api.hf.space/api/v1/analyze';
-        
-        // Example sentences - 只保留 3 個核心類型
+
         const examples = {
             1: "I've been struggling with this for weeks and nothing seems to help me at all.",
             2: "Can you just give me a straight answer instead of asking more questions?",
             3: "I understand. Let's focus on what you can control."
         };
-        
-        // Load example
+
         function loadExample(num) {
             const inputText = document.getElementById('inputText');
             const charCounter = document.getElementById('charCounter');
-            
+
             inputText.value = examples[num];
             const count = examples[num].length;
             charCounter.textContent = `${count} character${count !== 1 ? 's' : ''}`;
             charCounter.className = 'char-counter good';
         }
-        
-        // Character counter
+
         const inputText = document.getElementById('inputText');
         const charCounter = document.getElementById('charCounter');
-        
+
         inputText.addEventListener('input', function() {
             const count = this.value.trim().length;
             charCounter.textContent = `${count} character${count !== 1 ? 's' : ''}`;
-            
-            // Color based on length
+
             if (count < 15) {
                 charCounter.className = 'char-counter warning';
             } else {
                 charCounter.className = 'char-counter good';
             }
         });
-        
+
         async function analyzeText() {
             const inputText = document.getElementById('inputText').value.trim();
             const analyzeBtn = document.getElementById('analyzeBtn');
             const resultSection = document.getElementById('resultSection');
-            const errorMsg = document.getElementById('errorMsg');
-            
-            // Clear previous results and errors
+
             errorMsg.style.display = 'none';
             resultSection.classList.remove('show');
-            
-            // Validate input
+
             if (!inputText) {
                 showError('Please enter text to analyze');
                 return;
             }
-            
-            // Show loading state
+
             analyzeBtn.disabled = true;
             analyzeBtn.textContent = 'Analyzing...';
-            
+
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: inputText })
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`API error: ${response.status}`);
                 }
-                
+
                 const data = await response.json();
                 displayResults(data);
-                
+
             } catch (error) {
                 showError(`Analysis failed: ${error.message}`);
             } finally {
@@ -419,7 +343,7 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
                 analyzeBtn.textContent = 'Analyze Tone';
             }
         }
-        
+
         function displayResults(data) {
             const toneTypeEl = document.getElementById('toneType');
             const originalTextEl = document.getElementById('originalText');
@@ -427,57 +351,62 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
             const repairNoteEl = document.getElementById('repairNote');
             const scenarioEl = document.getElementById('scenario');
             const resultSection = document.getElementById('resultSection');
-            
+
+            const freq = (data.freq_type || 'Unknown');
+            const freqLower = freq.toLowerCase();
+
             // Tone badge
-            const toneClass = `tone-${data.freq_type.toLowerCase()}`;
-            const confidencePercent = (data.confidence * 100).toFixed(0);
-            
-            // Confidence color
+            const toneClass = `tone-${freqLower}`;
+            const confidencePercent = ((data.confidence || 0) * 100).toFixed(0);
+
             let confidenceClass = 'confidence';
-            if (data.confidence >= 0.7) {
-                confidenceClass += ' high';
-            } else if (data.confidence >= 0.4) {
-                confidenceClass += ' medium';
-            } else {
-                confidenceClass += ' low';
-            }
-            
+            if ((data.confidence || 0) >= 0.7) confidenceClass += ' high';
+            else if ((data.confidence || 0) >= 0.4) confidenceClass += ' medium';
+            else confidenceClass += ' low';
+
             toneTypeEl.innerHTML = `
-                <span class="tone-badge ${toneClass}">${data.freq_type}</span>
+                <span class="tone-badge ${toneClass}">${freq}</span>
                 <span class="${confidenceClass}">${confidencePercent}% confidence</span>
             `;
-            
-            // Text content
-            originalTextEl.textContent = data.original;
-            
-            // Repaired text - 顯示實際修復結果或系統建議
+
+            originalTextEl.textContent = data.original || '';
+
+            // ✅ OutOfScope UI behavior
+            if (freq === 'OutOfScope') {
+                repairedTextEl.textContent = '—';
+                repairNoteEl.textContent = data.repair_note || 'Out of scope: crisis/self-harm content is not processed by Continuum.';
+                repairNoteEl.style.display = 'block';
+
+                scenarioEl.textContent = 'Out-of-scope (crisis safety boundary)';
+                resultSection.classList.add('show');
+                return;
+            }
+
+            // Normal behavior
             if (data.repaired_text && data.repaired_text !== data.original) {
                 repairedTextEl.textContent = data.repaired_text;
             } else {
                 repairedTextEl.textContent = 'No repair needed';
             }
-            
+
             scenarioEl.textContent = data.scenario || 'Unclassified';
-            
-            // Show repair note (系統建議或修復說明)
+
             if (data.repair_note) {
                 repairNoteEl.textContent = data.repair_note;
                 repairNoteEl.style.display = 'block';
             } else {
                 repairNoteEl.style.display = 'none';
             }
-            
-            // Show results
+
             resultSection.classList.add('show');
         }
-        
+
         function showError(message) {
             const errorMsg = document.getElementById('errorMsg');
             errorMsg.textContent = message;
             errorMsg.style.display = 'block';
         }
-        
-        // Enter key support (Shift+Enter for newline)
+
         document.getElementById('inputText').addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
