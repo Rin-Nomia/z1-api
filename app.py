@@ -102,7 +102,6 @@ class AnalyzeRequest(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
-    # existing fields (keep)
     original: str
     freq_type: str
     confidence: float
@@ -110,11 +109,6 @@ class AnalyzeResponse(BaseModel):
     repaired_text: Optional[str] = None
     repair_note: Optional[str] = None
     log_id: Optional[str] = None
-
-    # new fields (backward compatible)
-    mode: Optional[str] = None
-    safety_flag: Optional[str] = None
-    safety_confidence: Optional[float] = None
 
 
 class FeedbackRequest(BaseModel):
@@ -164,27 +158,19 @@ async def analyze(request: AnalyzeRequest):
             raise HTTPException(400, result.get("reason"))
 
         freq_type = result["freq_type"]
-        confidence = result["confidence"]["final"]
-        mode = result.get("mode")
+        confidence = float(result["confidence"]["final"])
+        scenario = (result.get("output") or {}).get("scenario", "unknown")
 
-        # safety
-        safety = result.get("safety") or {}
-        safety_flag = safety.get("flag")
-        safety_conf = safety.get("confidence")
-
+        # default outputs from pipeline
         repaired_text = (result.get("output") or {}).get("repaired_text")
-        repair_note = None
+        repair_note = (result.get("output") or {}).get("repair_note")
 
-        # If crisis gate triggered: never override/beautify; keep original
-        if safety_flag and safety_flag != "none":
-            repaired_text = request.text
-            repair_note = "Safety gate triggered. Downstream system should follow crisis/safety policy."
-
-        # Existing contextual response behavior (keep)
-        if (freq_type == "Unknown" or confidence < 0.3) and not (safety_flag and safety_flag != "none"):
-            repaired_text, repair_note = generate_contextual_response(
-                request.text, freq_type, confidence
-            )
+        # ✅ IMPORTANT: OutOfScope must NOT be overwritten by contextual fallback
+        if freq_type != "OutOfScope":
+            if freq_type == "Unknown" or confidence < 0.3:
+                repaired_text, repair_note = generate_contextual_response(
+                    request.text, freq_type, confidence
+                )
 
         # Log analysis (never break API)
         log_id = None
@@ -196,9 +182,8 @@ async def analyze(request: AnalyzeRequest):
                     metadata={
                         "confidence": confidence,
                         "freq_type": freq_type,
-                        "mode": mode,
-                        "safety_flag": safety_flag,
                         "text_length": len(request.text),
+                        "scenario": scenario,
                     },
                 )
                 log_id = log.get("timestamp")  # event id
@@ -209,13 +194,10 @@ async def analyze(request: AnalyzeRequest):
             original=result["original"],
             freq_type=freq_type,
             confidence=confidence,
-            scenario=(result.get("output") or {}).get("scenario", "unknown"),
+            scenario=scenario,
             repaired_text=repaired_text,
             repair_note=repair_note,
             log_id=log_id,
-            mode=mode,
-            safety_flag=safety_flag,
-            safety_confidence=float(safety_conf) if safety_conf is not None else None,
         )
 
     except HTTPException:
