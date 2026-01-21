@@ -102,6 +102,7 @@ class AnalyzeRequest(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
+    # existing fields (keep)
     original: str
     freq_type: str
     confidence: float
@@ -109,6 +110,11 @@ class AnalyzeResponse(BaseModel):
     repaired_text: Optional[str] = None
     repair_note: Optional[str] = None
     log_id: Optional[str] = None
+
+    # new fields (backward compatible)
+    mode: Optional[str] = None
+    safety_flag: Optional[str] = None
+    safety_confidence: Optional[float] = None
 
 
 class FeedbackRequest(BaseModel):
@@ -159,10 +165,23 @@ async def analyze(request: AnalyzeRequest):
 
         freq_type = result["freq_type"]
         confidence = result["confidence"]["final"]
-        repaired_text = result["output"].get("repaired_text")
+        mode = result.get("mode")
+
+        # safety
+        safety = result.get("safety") or {}
+        safety_flag = safety.get("flag")
+        safety_conf = safety.get("confidence")
+
+        repaired_text = (result.get("output") or {}).get("repaired_text")
         repair_note = None
 
-        if freq_type == "Unknown" or confidence < 0.3:
+        # If crisis gate triggered: never override/beautify; keep original
+        if safety_flag and safety_flag != "none":
+            repaired_text = request.text
+            repair_note = "Safety gate triggered. Downstream system should follow crisis/safety policy."
+
+        # Existing contextual response behavior (keep)
+        if (freq_type == "Unknown" or confidence < 0.3) and not (safety_flag and safety_flag != "none"):
             repaired_text, repair_note = generate_contextual_response(
                 request.text, freq_type, confidence
             )
@@ -177,6 +196,8 @@ async def analyze(request: AnalyzeRequest):
                     metadata={
                         "confidence": confidence,
                         "freq_type": freq_type,
+                        "mode": mode,
+                        "safety_flag": safety_flag,
                         "text_length": len(request.text),
                     },
                 )
@@ -188,10 +209,13 @@ async def analyze(request: AnalyzeRequest):
             original=result["original"],
             freq_type=freq_type,
             confidence=confidence,
-            scenario=result["output"]["scenario"],
+            scenario=(result.get("output") or {}).get("scenario", "unknown"),
             repaired_text=repaired_text,
             repair_note=repair_note,
             log_id=log_id,
+            mode=mode,
+            safety_flag=safety_flag,
+            safety_confidence=float(safety_conf) if safety_conf is not None else None,
         )
 
     except HTTPException:
@@ -199,7 +223,6 @@ async def analyze(request: AnalyzeRequest):
     except Exception as e:
         logger.error(f"❌ Analysis error: {str(e)}")
         import traceback
-
         traceback.print_exc()
         raise HTTPException(500, f"Analysis failed: {str(e)}")
 
@@ -247,5 +270,4 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=7860)
