@@ -24,7 +24,7 @@ logger = logging.getLogger("continuum-api")
 app = FastAPI(
     title="Continuum API",
     description="Tone rhythm detection and repair for conversational AI",
-    version="2.0.0",
+    version="2.1.0",
 )
 
 app.add_middleware(
@@ -67,8 +67,7 @@ async def startup_event():
         logger.error(f"❌ Pipeline initialization failed: {e}")
         pipeline = None
 
-    # Initialize DataLogger (internally uses GITHUB_TOKEN/GITHUB_REPO)
-    # Even if GitHub env is missing, DataLogger should not break the API.
+    # Initialize DataLogger
     try:
         logger.info("📊 Initializing Data Logger...")
         data_logger = DataLogger(log_dir="logs")
@@ -104,7 +103,14 @@ class AnalyzeRequest(BaseModel):
 class AnalyzeResponse(BaseModel):
     original: str
     freq_type: str
-    confidence: float
+
+    # ✅ standardized decision
+    mode: str  # "repair" | "suggest" | "no-op"
+
+    # ✅ standardized confidence
+    confidence_final: float
+    confidence_classifier: Optional[float] = None
+
     scenario: str
     repaired_text: Optional[str] = None
     repair_note: Optional[str] = None
@@ -116,20 +122,6 @@ class FeedbackRequest(BaseModel):
     accuracy: int = Field(..., ge=1, le=5)
     helpful: int = Field(..., ge=1, le=5)
     accepted: bool
-
-
-def generate_contextual_response(text: str, freq_type: str, confidence: float):
-    if freq_type == "Unknown":
-        return (
-            text,
-            "Unable to detect specific tone pattern. The text appears neutral or requires more context.",
-        )
-    if confidence < 0.3:
-        return (
-            text,
-            f"Low confidence detection ({confidence:.2f}). Suggested tone: {freq_type}. Please review manually.",
-        )
-    return (text, None)
 
 
 # -------------------- Endpoints --------------------
@@ -157,20 +149,30 @@ async def analyze(request: AnalyzeRequest):
         if result.get("error"):
             raise HTTPException(400, result.get("reason"))
 
-        freq_type = result["freq_type"]
-        confidence = float(result["confidence"]["final"])
-        scenario = (result.get("output") or {}).get("scenario", "unknown")
+        freq_type = result.get("freq_type", "Unknown")
 
-        # default outputs from pipeline
-        repaired_text = (result.get("output") or {}).get("repaired_text")
-        repair_note = (result.get("output") or {}).get("repair_note")
+        conf_obj = result.get("confidence") or {}
+        confidence_final = float(conf_obj.get("final", 0.0))
 
-        # ✅ IMPORTANT: OutOfScope must NOT be overwritten by contextual fallback
-        if freq_type != "OutOfScope":
-            if freq_type == "Unknown" or confidence < 0.3:
-                repaired_text, repair_note = generate_contextual_response(
-                    request.text, freq_type, confidence
-                )
+        # cls_conf may be stored in different keys; keep robust
+        confidence_classifier = conf_obj.get("classifier", None)
+        if confidence_classifier is not None:
+            confidence_classifier = float(confidence_classifier)
+
+        # mode should be produced by pipeline after router step
+        mode = result.get("mode") or (result.get("output") or {}).get("mode") or "suggest"
+
+        out_obj = result.get("output") or {}
+        scenario = out_obj.get("scenario", "unknown")
+        repaired_text = out_obj.get("repaired_text")
+        repair_note = out_obj.get("repair_note")
+
+        # ✅ enforce transparent pass-through for no-op
+        if mode == "no-op":
+            repaired_text = result.get("original", request.text)
+            # keep repair_note if pipeline already gave one; otherwise provide minimal
+            if not repair_note:
+                repair_note = "Tone is already within a safe range. Transparent pass-through."
 
         # Log analysis (never break API)
         log_id = None
@@ -180,20 +182,24 @@ async def analyze(request: AnalyzeRequest):
                     input_text=request.text,
                     output_result=result,
                     metadata={
-                        "confidence": confidence,
+                        "confidence_final": confidence_final,
+                        "confidence_classifier": confidence_classifier,
                         "freq_type": freq_type,
+                        "mode": mode,
                         "text_length": len(request.text),
                         "scenario": scenario,
                     },
                 )
-                log_id = log.get("timestamp")  # event id
+                log_id = log.get("timestamp")
             except Exception as log_error:
                 logger.warning(f"⚠️ Logging failed: {log_error}")
 
         return AnalyzeResponse(
-            original=result["original"],
+            original=result.get("original", request.text),
             freq_type=freq_type,
-            confidence=confidence,
+            mode=mode,
+            confidence_final=confidence_final,
+            confidence_classifier=confidence_classifier,
             scenario=scenario,
             repaired_text=repaired_text,
             repair_note=repair_note,
@@ -243,7 +249,7 @@ async def get_stats():
 async def root():
     return {
         "name": "Continuum API",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "status": "active",
         "docs": "/docs",
         "health": "/health",
