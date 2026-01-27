@@ -325,6 +325,73 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
     }
   }
 
+  // ----------------------------
+  // ✅ robust getters (new API first, old API fallback)
+  // ----------------------------
+  function _getConfidenceFinal(data) {
+    // New API: confidence.final
+    if (data && data.confidence && typeof data.confidence === 'object') {
+      const v = Number(data.confidence.final);
+      if (Number.isFinite(v)) return v;
+    }
+    // Old API: confidence_final
+    if (data && data.confidence_final !== undefined) {
+      const v = Number(data.confidence_final);
+      if (Number.isFinite(v)) return v;
+    }
+    // Old old API: confidence (number)
+    if (data && typeof data.confidence === 'number') {
+      const v = Number(data.confidence);
+      if (Number.isFinite(v)) return v;
+    }
+    return 0;
+  }
+
+  function _getScenario(data) {
+    // New API: output.scenario
+    if (data && data.output && typeof data.output === 'object' && data.output.scenario) {
+      return String(data.output.scenario);
+    }
+    // Old API: scenario
+    if (data && data.scenario) return String(data.scenario);
+    return 'Unclassified';
+  }
+
+  function _getRepairNote(data) {
+    // New API: output.repair_note
+    if (data && data.output && typeof data.output === 'object' && data.output.repair_note) {
+      return String(data.output.repair_note);
+    }
+    // Legacy: repair_note
+    if (data && data.repair_note) return String(data.repair_note);
+    return '';
+  }
+
+  function _getOutputTextByMode(data, modeLower) {
+    // New API: output.repaired_text preferred for repair/suggest/no-op
+    const normalized = (data && (data.normalized || data.original)) ? String(data.normalized || data.original) : '';
+    const original = (data && data.original) ? String(data.original) : normalized;
+
+    if (data && data.output && typeof data.output === 'object') {
+      const outText = (data.output.repaired_text !== undefined && data.output.repaired_text !== null)
+        ? String(data.output.repaired_text)
+        : '';
+
+      if (modeLower === 'repair' || modeLower === 'suggest') {
+        return outText || normalized || original || '';
+      }
+      // no-op: show normalized (transparent pass-through)
+      return normalized || original || '';
+    }
+
+    // Legacy fallbacks
+    if (modeLower === 'repair' || modeLower === 'suggest') {
+      if (data && data.repaired_text) return String(data.repaired_text);
+      return normalized || original || '';
+    }
+    return normalized || original || '';
+  }
+
   function displayResults(data) {
     const resultSection = document.getElementById('resultSection');
 
@@ -335,21 +402,24 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
     const noteBox = document.getElementById('noteBox');
     const scenarioEl = document.getElementById('scenario');
 
-    const freq = (data.freq_type || 'Unknown');
+    const freq = (data && data.freq_type) ? String(data.freq_type) : 'Unknown';
     const freqLower = freq.toLowerCase();
 
     // mode (new API), fallback if old API
-    let mode = data.mode;
+    let mode = (data && data.mode) ? data.mode : null;
     if (!mode) {
       // fallback heuristic:
       if (freq === 'Unknown') mode = 'no-op';
-      else if (data.repaired_text && data.original && data.repaired_text !== data.original) mode = 'repair';
+      else if (data && data.repaired_text && data.original && data.repaired_text !== data.original) mode = 'repair';
       else mode = 'suggest';
     }
-
     const modeLower = String(mode).toLowerCase();
 
-    const confFinal = (data.confidence_final !== undefined) ? data.confidence_final : (data.confidence || 0);
+    // ✅ confidence (robust)
+    let confFinal = _getConfidenceFinal(data);
+    if (!Number.isFinite(confFinal)) confFinal = 0;
+    confFinal = Math.max(0, Math.min(1, confFinal));
+
     const confPercent = (confFinal * 100).toFixed(0);
 
     let confClass = 'confidence';
@@ -357,36 +427,38 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
     else if (confFinal >= 0.4) confClass += ' medium';
     else confClass += ' low';
 
+    // ✅ Decision line
     decisionLine.innerHTML = `
       <span class="tone-badge tone-${freqLower}">${freq}</span>
       <span class="mode-badge mode-${modeLower}">${modeLower.toUpperCase()}</span>
       <span class="${confClass}">${confPercent}% confidence</span>
     `;
 
-    originalTextEl.textContent = data.original || '';
+    // Original text
+    originalTextEl.textContent = (data && data.original) ? String(data.original) : '';
 
-    // Scenario
-    scenarioEl.textContent = data.scenario || 'Unclassified';
+    // ✅ Scenario (new API: output.scenario)
+    scenarioEl.textContent = _getScenario(data);
 
-    // Note
-    if (data.repair_note) {
-      noteBox.textContent = data.repair_note;
+    // ✅ Note (new API: output.repair_note)
+    const note = _getRepairNote(data);
+    if (note) {
+      noteBox.textContent = note;
       noteBox.style.display = 'block';
     } else {
       noteBox.style.display = 'none';
     }
 
-    // Output rendering by mode
+    // ✅ Output rendering by mode (no more "No repair needed" lie)
     if (modeLower === 'repair') {
       outputLabel.textContent = 'Repaired Text';
-      outputText.textContent = data.repaired_text || '(no repaired text returned)';
     } else if (modeLower === 'suggest') {
       outputLabel.textContent = 'Suggestion Output';
-      outputText.textContent = data.repaired_text || '(no suggestion returned)';
     } else {
       outputLabel.textContent = 'Transparent Pass-through';
-      outputText.textContent = data.original || '';
     }
+
+    outputText.textContent = _getOutputTextByMode(data, modeLower);
 
     resultSection.classList.add('show');
   }
