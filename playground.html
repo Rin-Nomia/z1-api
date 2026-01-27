@@ -6,7 +6,6 @@
   <title>Continuum - API Playground</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: #0a0a0a;
@@ -14,13 +13,10 @@
       padding: 20px;
       line-height: 1.6;
     }
-
     .container { max-width: 800px; margin: 0 auto; }
     header { text-align: center; margin-bottom: 40px; }
-
     h1 { font-size: 2em; margin-bottom: 10px; color: #fff; }
     .tagline { color: #888; font-size: 0.9em; margin-bottom: 8px; }
-
     .notice {
       background: #1a2332;
       border: 1px solid #2d3e54;
@@ -32,7 +28,6 @@
       margin-top: 12px;
     }
     .notice strong { color: #4a9eff; }
-
     .input-section {
       background: #1a1a1a;
       border: 1px solid #333;
@@ -40,7 +35,6 @@
       padding: 20px;
       margin-bottom: 20px;
     }
-
     .example-buttons {
       margin-top: 15px;
       margin-bottom: 10px;
@@ -49,7 +43,6 @@
       gap: 8px;
       justify-content: center;
     }
-
     .example-btn {
       width: auto;
       padding: 8px 16px;
@@ -61,9 +54,7 @@
       cursor: pointer;
       transition: background 0.2s;
     }
-
     .example-btn:hover { background: #3d4e64; }
-
     .char-counter {
       text-align: right;
       color: #666;
@@ -72,7 +63,6 @@
     }
     .char-counter.warning { color: #ff922b; }
     .char-counter.good { color: #51cf66; }
-
     textarea {
       width: 100%;
       min-height: 120px;
@@ -86,7 +76,6 @@
       font-family: inherit;
     }
     textarea:focus { outline: none; border-color: #4a9eff; }
-
     button {
       width: 100%;
       background: #4a9eff;
@@ -102,7 +91,6 @@
     }
     button:hover { background: #3a8eef; }
     button:disabled { background: #333; cursor: not-allowed; }
-
     .result-section {
       background: #1a1a1a;
       border: 1px solid #333;
@@ -111,14 +99,12 @@
       display: none;
     }
     .result-section.show { display: block; }
-
     .result-item {
       margin-bottom: 20px;
       padding-bottom: 20px;
       border-bottom: 1px solid #333;
     }
     .result-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-
     .result-label {
       color: #888;
       font-size: 0.85em;
@@ -126,9 +112,7 @@
       letter-spacing: 0.5px;
       margin-bottom: 8px;
     }
-
     .result-value { color: #fff; font-size: 1.05em; }
-
     .note-box {
       background: #1a2332;
       border-left: 3px solid #4a9eff;
@@ -138,7 +122,6 @@
       font-size: 0.9em;
       border-radius: 4px;
     }
-
     .tone-badge, .mode-badge {
       display: inline-block;
       padding: 4px 12px;
@@ -147,7 +130,6 @@
       font-weight: 600;
       margin-right: 8px;
     }
-
     .tone-anxious { background: #ff6b6b; color: #fff; }
     .tone-cold { background: #4dabf7; color: #fff; }
     .tone-sharp { background: #ff922b; color: #fff; }
@@ -169,7 +151,6 @@
     .confidence.low { color: #ff922b; }
     .confidence.medium { color: #ffd43b; }
     .confidence.high { color: #51cf66; }
-
     .error {
       background: #2d1f1f;
       border: 1px solid #ff6b6b;
@@ -179,7 +160,6 @@
       margin-top: 15px;
       font-size: 0.9em;
     }
-
     footer {
       text-align: center;
       margin-top: 40px;
@@ -325,71 +305,19 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
     }
   }
 
-  // ----------------------------
-  // ✅ robust getters (new API first, old API fallback)
-  // ----------------------------
-  function _getConfidenceFinal(data) {
-    // New API: confidence.final
-    if (data && data.confidence && typeof data.confidence === 'object') {
-      const v = Number(data.confidence.final);
-      if (Number.isFinite(v)) return v;
-    }
-    // Old API: confidence_final
-    if (data && data.confidence_final !== undefined) {
-      const v = Number(data.confidence_final);
-      if (Number.isFinite(v)) return v;
-    }
-    // Old old API: confidence (number)
-    if (data && typeof data.confidence === 'number') {
-      const v = Number(data.confidence);
-      if (Number.isFinite(v)) return v;
-    }
-    return 0;
-  }
-
-  function _getScenario(data) {
-    // New API: output.scenario
-    if (data && data.output && typeof data.output === 'object' && data.output.scenario) {
-      return String(data.output.scenario);
-    }
-    // Old API: scenario
-    if (data && data.scenario) return String(data.scenario);
-    return 'Unclassified';
-  }
-
-  function _getRepairNote(data) {
-    // New API: output.repair_note
-    if (data && data.output && typeof data.output === 'object' && data.output.repair_note) {
-      return String(data.output.repair_note);
-    }
-    // Legacy: repair_note
-    if (data && data.repair_note) return String(data.repair_note);
-    return '';
-  }
-
-  function _getOutputTextByMode(data, modeLower) {
-    // New API: output.repaired_text preferred for repair/suggest/no-op
-    const normalized = (data && (data.normalized || data.original)) ? String(data.normalized || data.original) : '';
-    const original = (data && data.original) ? String(data.original) : normalized;
-
-    if (data && data.output && typeof data.output === 'object') {
-      const outText = (data.output.repaired_text !== undefined && data.output.repaired_text !== null)
-        ? String(data.output.repaired_text)
-        : '';
-
-      if (modeLower === 'repair' || modeLower === 'suggest') {
-        return outText || normalized || original || '';
+  // ---- schema helpers (supports both new/old API) ----
+  function pick(obj, paths, fallback=null) {
+    for (const p of paths) {
+      let cur = obj;
+      const parts = p.split('.');
+      let ok = true;
+      for (const part of parts) {
+        if (cur && Object.prototype.hasOwnProperty.call(cur, part)) cur = cur[part];
+        else { ok = false; break; }
       }
-      // no-op: show normalized (transparent pass-through)
-      return normalized || original || '';
+      if (ok && cur !== undefined && cur !== null) return cur;
     }
-
-    // Legacy fallbacks
-    if (modeLower === 'repair' || modeLower === 'suggest') {
-      if (data && data.repaired_text) return String(data.repaired_text);
-      return normalized || original || '';
-    }
-    return normalized || original || '';
+    return fallback;
   }
 
   function displayResults(data) {
@@ -402,63 +330,66 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
     const noteBox = document.getElementById('noteBox');
     const scenarioEl = document.getElementById('scenario');
 
-    const freq = (data && data.freq_type) ? String(data.freq_type) : 'Unknown';
-    const freqLower = freq.toLowerCase();
+    const original = pick(data, ['original'], '');
+    const freq = pick(data, ['freq_type'], 'Unknown');
+    const freqLower = String(freq).toLowerCase();
 
-    // mode (new API), fallback if old API
-    let mode = (data && data.mode) ? data.mode : null;
+    // mode
+    let mode = pick(data, ['mode'], null);
     if (!mode) {
-      // fallback heuristic:
+      // ultra-old fallback heuristic
+      const repaired = pick(data, ['repaired_text', 'output.repaired_text'], '');
       if (freq === 'Unknown') mode = 'no-op';
-      else if (data && data.repaired_text && data.original && data.repaired_text !== data.original) mode = 'repair';
+      else if (repaired && original && repaired !== original) mode = 'repair';
       else mode = 'suggest';
     }
     const modeLower = String(mode).toLowerCase();
 
-    // ✅ confidence (robust)
-    let confFinal = _getConfidenceFinal(data);
-    if (!Number.isFinite(confFinal)) confFinal = 0;
-    confFinal = Math.max(0, Math.min(1, confFinal));
-
-    const confPercent = (confFinal * 100).toFixed(0);
+    // confidence (prefer new nested, then flat, then number, else 0)
+    const confFinalRaw = pick(data, ['confidence.final', 'confidence_final', 'confidence'], 0);
+    const confFinal = Number(confFinalRaw);
+    const safeConf = Number.isFinite(confFinal) ? Math.max(0, Math.min(1, confFinal)) : 0;
+    const confPercent = Math.round(safeConf * 100);
 
     let confClass = 'confidence';
-    if (confFinal >= 0.7) confClass += ' high';
-    else if (confFinal >= 0.4) confClass += ' medium';
+    if (safeConf >= 0.7) confClass += ' high';
+    else if (safeConf >= 0.4) confClass += ' medium';
     else confClass += ' low';
 
-    // ✅ Decision line
     decisionLine.innerHTML = `
       <span class="tone-badge tone-${freqLower}">${freq}</span>
       <span class="mode-badge mode-${modeLower}">${modeLower.toUpperCase()}</span>
       <span class="${confClass}">${confPercent}% confidence</span>
     `;
 
-    // Original text
-    originalTextEl.textContent = (data && data.original) ? String(data.original) : '';
+    originalTextEl.textContent = original;
 
-    // ✅ Scenario (new API: output.scenario)
-    scenarioEl.textContent = _getScenario(data);
+    // scenario (prefer output.scenario, then flat)
+    const scenario = pick(data, ['output.scenario', 'scenario'], 'general');
+    scenarioEl.textContent = scenario;
 
-    // ✅ Note (new API: output.repair_note)
-    const note = _getRepairNote(data);
-    if (note) {
-      noteBox.textContent = note;
+    // note (prefer output.repair_note, then flat)
+    const repairNote = pick(data, ['output.repair_note', 'repair_note'], '');
+    if (repairNote) {
+      noteBox.textContent = repairNote;
       noteBox.style.display = 'block';
     } else {
       noteBox.style.display = 'none';
     }
 
-    // ✅ Output rendering by mode (no more "No repair needed" lie)
+    // output text (prefer output.repaired_text, then flat)
+    const repairedText = pick(data, ['output.repaired_text', 'repaired_text'], '');
+
     if (modeLower === 'repair') {
       outputLabel.textContent = 'Repaired Text';
+      outputText.textContent = repairedText || '(no repaired text returned)';
     } else if (modeLower === 'suggest') {
       outputLabel.textContent = 'Suggestion Output';
+      outputText.textContent = repairedText || '(no suggestion returned)';
     } else {
       outputLabel.textContent = 'Transparent Pass-through';
+      outputText.textContent = original || repairedText || '';
     }
-
-    outputText.textContent = _getOutputTextByMode(data, modeLower);
 
     resultSection.classList.add('show');
   }
