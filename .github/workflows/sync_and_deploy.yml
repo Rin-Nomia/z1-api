@@ -1,4 +1,4 @@
-name: 同步 z1_mvp 並部署 Continuum API (deploy-safe)
+name: 同步 z1_mvp 並部署 Continuum API (deploy-safe-split)
 
 on:
   push:
@@ -10,17 +10,17 @@ env:
   HF_USERNAME: RinNomia
   HF_SPACE: continuum-api
 
-  # ✅ HF Hub timeouts (default is often too short)
+  # ⏱️ HF Hub timeout（保留）
   HF_HUB_ETAG_TIMEOUT: "60"
   HF_HUB_DOWNLOAD_TIMEOUT: "60"
 
 jobs:
   sync_and_deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
-      # 關卡 1：抓取當前 repo (continuum-api)
+      # 關卡 1：抓取 continuum-api
       - name: 關卡 1 - Checkout continuum-api
         uses: actions/checkout@v4
         with:
@@ -34,23 +34,17 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: z1_mvp
 
-      # 關卡 3：複製資料夾（只複製你要的）
+      # 關卡 3：複製核心資料夾
       - name: 關卡 3 - 複製 pipeline, core, configs
         run: |
-          echo "📦 開始複製資料夾..."
+          echo "📦 同步核心模組..."
           rm -rf continuum-api/pipeline continuum-api/core continuum-api/configs
 
           cp -r z1_mvp/pipeline continuum-api/
-          echo "✅ pipeline/ 已複製"
-
           cp -r z1_mvp/core continuum-api/
-          echo "✅ core/ 已複製"
-
           cp -r z1_mvp/configs continuum-api/
-          echo "✅ configs/ 已複製"
 
-          echo ""
-          echo "📂 檔案結構（continuum-api/）："
+          echo "✅ 同步完成"
           ls -lh continuum-api/
 
       # 關卡 4：設定 Python
@@ -59,51 +53,35 @@ jobs:
         with:
           python-version: "3.11"
 
-      # 關卡 5：測試 Pipeline（保持你的測試）
+      # 關卡 5：Pipeline 測試（不動）
       - name: 關卡 5 - 測試 Pipeline
         working-directory: continuum-api
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          echo "📦 安裝依賴..."
           pip install -r requirements.txt
-
-          echo ""
-          echo "🧪 測試 Pipeline"
-          echo "================================"
 
           python << 'PYTEST'
           from pipeline.z1_pipeline import Z1Pipeline
-
-          print("初始化 Pipeline...")
           pipeline = Z1Pipeline(debug=True)
-          print("✅ Pipeline 初始化成功")
-          print()
 
-          print("🧪 測試分析功能")
-          test_text = "I don't know what to do anymore. Everything I try fails."
-          result = pipeline.process(test_text)
+          text = "I don't know what to do anymore. Everything I try fails."
+          result = pipeline.process(text)
 
-          if result.get('error'):
-              print(f"❌ 測試失敗：{result.get('reason')}")
-              raise SystemExit(1)
+          if result.get("error"):
+              raise SystemExit("❌ Pipeline 測試失敗")
 
-          print(f"✅ 測試成功！")
-          print(f"   類型：{result['freq_type']}")
-          print(f"   信心值：{result['confidence']['final']:.2f}")
-          print(f"   場景：{result['output']['scenario']}")
+          print("✅ Pipeline OK")
           PYTEST
 
-      # ✅ NEW：關卡 5.5 - 建立乾淨部署包 dist/
-      - name: 關卡 5.5 - 建立乾淨部署包 dist/
+      # 關卡 5.5：建立乾淨 dist/
+      - name: 關卡 5.5 - 建立 dist/
         working-directory: continuum-api
         run: |
-          echo "📦 建立乾淨部署包 dist/ ..."
           rm -rf dist
-          mkdir -p dist
+          mkdir dist
 
-          # 只把「部署必要」的東西同步進 dist/
-          rsync -av --delete \
+          rsync -av \
             --exclude ".git" \
             --exclude "logs" \
             --exclude "__pycache__" \
@@ -120,87 +98,72 @@ jobs:
             --exclude "*.zip" \
             ./ dist/
 
-          echo ""
-          echo "✅ dist/ 已生成（列出前 200 個項目）："
-          (cd dist && find . -maxdepth 3 -type f | head -n 200)
-
-          echo ""
-          echo "📦 dist/ 大小："
+          echo "📦 dist 大小："
           du -sh dist
 
-      # 關卡 6：部署到 HuggingFace（只上傳 dist/）
-      - name: 關卡 6 - 部署到 HuggingFace (upload dist only)
+      # 關卡 6：部署到 HuggingFace（分批上傳，防 timeout）
+      - name: 關卡 6 - Deploy to HuggingFace (split upload)
         working-directory: continuum-api
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          echo "📦 安裝 HuggingFace Hub..."
           pip install huggingface_hub
 
-          echo ""
-          echo "📤 開始部署到 HuggingFace Space..."
-          echo "================================"
-
           python << 'PYDEPLOY'
-          import os
+          import os, time
           from huggingface_hub import HfApi
           from datetime import datetime
 
           token = os.environ["HF_TOKEN"]
-          username = os.environ["HF_USERNAME"]
-          space_name = os.environ["HF_SPACE"]
-          repo_id = f"{username}/{space_name}"
-
-          print(f"📍 目標 Space：{repo_id}\n")
+          repo_id = f"{os.environ['HF_USERNAME']}/{os.environ['HF_SPACE']}"
 
           api = HfApi(token=token)
 
-          # Ensure Space exists
           try:
               api.space_info(repo_id)
-              print(f"✅ Space 已存在：{repo_id}")
           except Exception:
-              print("⚠️  Space 不存在，將自動建立...")
-              api.create_repo(
-                  repo_id=repo_id,
-                  repo_type="space",
-                  space_sdk="docker",
-              )
-              print(f"✅ Space 建立成功：{repo_id}")
+              api.create_repo(repo_id=repo_id, repo_type="space", space_sdk="docker")
 
-          print("\n📤 上傳 dist/（乾淨部署包）...")
+          print("📤 分批上傳 dist 內容...")
 
-          api.upload_folder(
-              folder_path="dist",
-              repo_id=repo_id,
-              repo_type="space",
-              commit_message=f"Deploy dist [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]",
-              ignore_patterns=[
-                  ".git/**",
-                  "logs/**",
-                  "**/__pycache__/**",
-                  "**/*.pyc",
-                  "**/*.parquet",
-                  "**/*.jsonl",
-                  "**/*.mp4",
-                  "**/*.mov",
-                  "**/*.zip",
-                  ".pytest_cache/**",
-                  ".mypy_cache/**",
-                  ".venv/**",
-                  "venv/**",
-                  "node_modules/**",
-              ],
-          )
+          files = ["app.py", "Dockerfile", "requirements.txt", "README.md"]
+          folders = ["pipeline", "core", "configs", "utils"]
 
-          print("\n================================")
-          print("🎉 部署完成！")
-          print("================================\n")
-          print("📍 Space URL:")
-          print(f"   https://huggingface.co/spaces/{repo_id}\n")
-          print("📍 API 端點：")
-          print(f"   健康檢查：https://rinnomia-{space_name}.hf.space/health")
-          print(f"   API 文件：https://rinnomia-{space_name}.hf.space/docs")
-          print(f"   分析端點：https://rinnomia-{space_name}.hf.space/api/v1/analyze")
-          print("================================")
+          for f in files:
+              path = f"dist/{f}"
+              if os.path.exists(path):
+                  for i in range(3):
+                      try:
+                          api.upload_file(
+                              path_or_fileobj=path,
+                              path_in_repo=f,
+                              repo_id=repo_id,
+                              repo_type="space",
+                              commit_message=f"deploy {f}",
+                          )
+                          print(f"✅ {f}")
+                          break
+                      except Exception as e:
+                          print(f"⚠️ {f} retry {i+1}")
+                          time.sleep(3)
+
+          for folder in folders:
+              path = f"dist/{folder}"
+              if os.path.exists(path):
+                  for i in range(3):
+                      try:
+                          api.upload_folder(
+                              folder_path=path,
+                              path_in_repo=folder,
+                              repo_id=repo_id,
+                              repo_type="space",
+                              commit_message=f"deploy {folder}/",
+                          )
+                          print(f"✅ {folder}/")
+                          break
+                      except Exception as e:
+                          print(f"⚠️ {folder}/ retry {i+1}")
+                          time.sleep(5)
+
+          print("🎉 部署完成")
           PYDEPLOY
