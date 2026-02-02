@@ -1,272 +1,346 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Continuum - API Playground</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Continuum — Risk Governance Demo</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:#0a0a0a;
+      color:#e6e6e6;
+      padding:20px;
+      line-height:1.55;
+    }
+    .container{ max-width:980px; margin:0 auto; }
+    header{ text-align:left; margin-bottom:18px; }
+    .brand{ display:flex; align-items:baseline; gap:10px; }
+    .brand h1{ font-size:1.6em; color:#fff; letter-spacing:0.2px; }
+    .pill{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:4px 10px; border-radius:999px;
+      border:1px solid #2a2a2a; color:#bdbdbd; font-size:0.85em;
+      background:#111;
+    }
+    .hero{
+      margin-top:12px;
+      background:linear-gradient(180deg,#111,#0a0a0a);
+      border:1px solid #222;
+      border-radius:10px;
+      padding:16px;
+    }
+    .hero .headline{ font-size:1.15em; color:#fff; margin-bottom:6px; }
+    .hero .sub{ color:#a8a8a8; font-size:0.92em; }
+    .hero .sub strong{ color:#d9d9d9; font-weight:700; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0a0a0a;
-      color: #e0e0e0;
-      padding: 20px;
-      line-height: 1.6;
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+      margin-top:14px;
     }
 
-    .container { max-width: 800px; margin: 0 auto; }
-    header { text-align: center; margin-bottom: 40px; }
-
-    h1 { font-size: 2em; margin-bottom: 10px; color: #fff; }
-    .tagline { color: #888; font-size: 0.9em; margin-bottom: 8px; }
-
-    .notice {
-      background: #1a2332;
-      border: 1px solid #2d3e54;
-      border-radius: 6px;
-      padding: 12px;
-      color: #88b3ff;
-      font-size: 0.85em;
-      text-align: center;
-      margin-top: 12px;
+    /* Layer 1 */
+    .panel{
+      background:#111;
+      border:1px solid #2b2b2b;
+      border-radius:10px;
+      padding:16px;
     }
-    .notice strong { color: #4a9eff; }
-
-    .input-section {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 20px;
+    .panel-title{
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:10px;
     }
-
-    .example-buttons {
-      margin-top: 15px;
-      margin-bottom: 10px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: center;
+    .panel-title .left{
+      display:flex; flex-direction:column; gap:2px;
+    }
+    .panel-title .kicker{
+      font-size:0.78em;
+      color:#9a9a9a;
+      letter-spacing:0.7px;
+      text-transform:uppercase;
+    }
+    .panel-title .name{
+      font-size:1.05em; color:#fff;
+    }
+    .panel-title .hint{
+      color:#8d8d8d; font-size:0.85em;
     }
 
-    .example-btn {
-      width: auto;
-      padding: 8px 16px;
-      background: #2d3e54;
-      font-size: 0.85em;
-      border: none;
-      border-radius: 4px;
-      color: #fff;
-      cursor: pointer;
-      transition: background 0.2s;
+    textarea{
+      width:100%;
+      min-height:120px;
+      background:#0a0a0a;
+      border:1px solid #2b2b2b;
+      border-radius:8px;
+      padding:12px;
+      color:#e6e6e6;
+      font-size:1em;
+      resize:vertical;
+      font-family:inherit;
+    }
+    textarea:focus{ outline:none; border-color:#4a9eff; }
+
+    .row{
+      display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; align-items:center;
+    }
+    .btn{
+      border:none; border-radius:8px;
+      padding:10px 12px;
+      font-weight:700;
+      cursor:pointer;
+      transition:transform 0.05s ease, opacity 0.2s ease;
+    }
+    .btn:active{ transform:translateY(1px); }
+    .btn-primary{
+      background:#4a9eff; color:#fff;
+    }
+    .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; }
+    .btn-ghost{
+      background:#1b1b1b; color:#e6e6e6; border:1px solid #2b2b2b;
+      font-weight:600;
+    }
+    .btn-ghost:hover{ border-color:#3a3a3a; }
+    .meta{
+      margin-left:auto;
+      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    }
+    .counter{ color:#8d8d8d; font-size:0.9em; }
+    .counter.good{ color:#51cf66; }
+    .counter.warn{ color:#ff922b; }
+
+    /* Compare blocks */
+    .compare{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:14px;
+    }
+    @media (max-width: 860px){
+      .compare{ grid-template-columns:1fr; }
     }
 
-    .example-btn:hover { background: #3d4e64; }
-
-    .char-counter {
-      text-align: right;
-      color: #666;
-      font-size: 0.85em;
-      margin-top: 8px;
+    .card{
+      border-radius:10px;
+      padding:16px;
+      border:1px solid #2b2b2b;
+      background:#111;
+      min-height:170px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
     }
-    .char-counter.warning { color: #ff922b; }
-    .char-counter.good { color: #51cf66; }
-
-    textarea {
-      width: 100%;
-      min-height: 120px;
-      background: #0a0a0a;
-      border: 1px solid #333;
-      border-radius: 4px;
-      padding: 12px;
-      color: #e0e0e0;
-      font-size: 1em;
-      resize: vertical;
-      font-family: inherit;
+    .card-head{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
     }
-    textarea:focus { outline: none; border-color: #4a9eff; }
-
-    button {
-      width: 100%;
-      background: #4a9eff;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      padding: 12px;
-      font-size: 1em;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 15px;
-      transition: background 0.2s;
+    .card-head .title{
+      font-size:1em; color:#fff;
+      display:flex; align-items:center; gap:8px;
     }
-    button:hover { background: #3a8eef; }
-    button:disabled { background: #333; cursor: not-allowed; }
-
-    .result-section {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 20px;
-      display: none;
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:0.85em;
+      font-weight:800;
+      letter-spacing:0.2px;
+      white-space:nowrap;
     }
-    .result-section.show { display: block; }
+    .badge-risk{ background:#2b1515; color:#ff6b6b; border:1px solid #ff6b6b33; }
+    .badge-safe{ background:#132215; color:#51cf66; border:1px solid #51cf6633; }
+    .badge-info{ background:#1a2332; color:#88b3ff; border:1px solid #88b3ff33; }
+    .badge-warn{ background:#2a210f; color:#ffd43b; border:1px solid #ffd43b33; }
 
-    .result-item {
-      margin-bottom: 20px;
-      padding-bottom: 20px;
-      border-bottom: 1px solid #333;
+    .blurb{
+      color:#a8a8a8;
+      font-size:0.92em;
     }
-    .result-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .blurb strong{ color:#e6e6e6; }
 
-    .result-label {
-      color: #888;
-      font-size: 0.85em;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 8px;
+    .box{
+      background:#0a0a0a;
+      border:1px solid #2b2b2b;
+      border-radius:10px;
+      padding:12px;
+      color:#e6e6e6;
+      font-size:1em;
+      min-height:64px;
+      white-space:pre-wrap;
     }
 
-    .result-value { color: #fff; font-size: 1.05em; }
-
-    .note-box {
-      background: #1a2332;
-      border-left: 3px solid #4a9eff;
-      padding: 12px;
-      margin-top: 12px;
-      color: #88b3ff;
-      font-size: 0.9em;
-      border-radius: 4px;
+    .divider{
+      height:1px;
+      background:#222;
+      margin:12px 0;
     }
 
-    .tone-badge, .mode-badge, .safe-badge {
-      display: inline-block;
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 0.9em;
-      font-weight: 600;
-      margin-right: 8px;
+    .mini{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+      color:#9a9a9a; font-size:0.9em;
     }
 
-    .tone-anxious { background: #ff6b6b; color: #fff; }
-    .tone-cold { background: #4dabf7; color: #fff; }
-    .tone-sharp { background: #ff922b; color: #fff; }
-    .tone-blur { background: #868e96; color: #fff; }
-    .tone-pushy { background: #f783ac; color: #fff; }
-    .tone-unknown { background: #333; color: #888; }
-    .tone-outofscope { background: #7b2cbf; color: #fff; }
-
-    .mode-repair { background: #2f9e44; color: #fff; }
-    .mode-suggest { background: #f08c00; color: #fff; }
-    .mode-no-op { background: #495057; color: #fff; }
-
-    /* ✅ NEW: Safe badge for NO-OP (instead of showing 0% confidence) */
-    .safe-badge { background: #1f2a1f; border: 1px solid #2f9e44; color: #51cf66; }
-    .safe-badge span { opacity: 0.95; }
-
-    .confidence {
-      display: inline-block;
-      color: #888;
-      font-size: 0.9em;
-      margin-left: 4px;
+    .tone-tag{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid #2b2b2b;
+      background:#0f0f0f;
+      color:#cfcfcf;
+      font-weight:700;
+      font-size:0.88em;
     }
-    .confidence.low { color: #ff922b; }
-    .confidence.medium { color: #ffd43b; }
-    .confidence.high { color: #51cf66; }
+    .dot{ width:8px; height:8px; border-radius:999px; display:inline-block; }
+    .dot-anx{ background:#ff6b6b; }
+    .dot-sharp{ background:#ff922b; }
+    .dot-cold{ background:#4dabf7; }
+    .dot-blur{ background:#868e96; }
+    .dot-pushy{ background:#f783ac; }
+    .dot-unk{ background:#444; }
 
-    .error {
-      background: #2d1f1f;
-      border: 1px solid #ff6b6b;
-      border-radius: 4px;
-      padding: 12px;
-      color: #ff6b6b;
-      margin-top: 15px;
-      font-size: 0.9em;
+    .note{
+      background:#101827;
+      border:1px solid #23344f;
+      border-radius:10px;
+      padding:12px;
+      color:#9ec3ff;
+      font-size:0.9em;
     }
 
-    footer {
-      text-align: center;
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 1px solid #333;
-      color: #666;
-      font-size: 0.85em;
+    .error{
+      background:#2d1f1f;
+      border:1px solid #ff6b6b;
+      border-radius:10px;
+      padding:12px;
+      color:#ff6b6b;
+      margin-top:12px;
+      font-size:0.92em;
+      display:none;
     }
-    footer a { color: #4a9eff; text-decoration: none; }
-    footer p { margin: 8px 0; }
+
+    footer{
+      margin-top:18px;
+      border-top:1px solid #222;
+      padding-top:14px;
+      color:#8d8d8d;
+      font-size:0.85em;
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    footer a{ color:#4a9eff; text-decoration:none; }
   </style>
 </head>
 
 <body>
 <div class="container">
   <header>
-    <h1>💎 Continuum</h1>
-    <p class="tagline">RIN Protocol — Tone Rhythm Repair Module</p>
-    <div class="notice">
-      <strong>💡 Best Practice:</strong> Enter complete sentences (15+ characters recommended) for accurate tone analysis
+    <div class="brand">
+      <h1>💎 Continuum</h1>
+      <span class="pill">AI Conversation Risk Governance</span>
+    </div>
+    <div class="hero">
+      <div class="headline">
+        Ensure AI <strong>doesn’t over-comfort</strong> or <strong>over-explain</strong> in the wrong context.
+      </div>
+      <div class="sub">
+        This demo shows the same input with <strong>Ungoverned Output</strong> vs <strong>Continuum-Governed Output</strong>.
+      </div>
     </div>
   </header>
 
-  <div class="input-section">
-    <textarea id="inputText"
-      placeholder="Enter a complete sentence for best results (15+ characters recommended)...
-
-Try these examples:
-
-Anxious:
-- I've been struggling with this for weeks and nothing seems to help me at all.
-- I don't even know why I'm telling you this anymore, you probably can't help anyway.
-
-Sharp:
-- Can you just give me a straight answer instead of asking more questions?
-- Honestly I'm just really tired of explaining the same thing over and over again.
-
-Cold:
-- I understand. Let's focus on what you can control.
-
-Note: Messages under 15 characters may not provide accurate tone analysis."
-    ></textarea>
-
-    <div class="example-buttons">
-      <button type="button" class="example-btn" onclick="loadExample(1)">Anxious Example</button>
-      <button type="button" class="example-btn" onclick="loadExample(2)">Sharp Example</button>
-      <button type="button" class="example-btn" onclick="loadExample(3)">Cold Example</button>
+  <!-- Layer 1 -->
+  <section class="panel">
+    <div class="panel-title">
+      <div class="left">
+        <div class="kicker">Layer 1</div>
+        <div class="name">User Input</div>
+      </div>
+      <div class="hint">Start with a complete sentence (15+ chars recommended)</div>
     </div>
 
-    <div id="charCounter" class="char-counter">0 characters</div>
-    <button id="analyzeBtn" onclick="analyzeText()">Analyze Tone</button>
-    <div id="errorMsg" class="error" style="display:none;"></div>
-  </div>
+    <textarea id="inputText" placeholder="Type a user message… (15+ characters recommended)"></textarea>
 
-  <div id="resultSection" class="result-section">
-    <div class="result-item">
-      <div class="result-label">Decision</div>
-      <div class="result-value" id="decisionLine"></div>
+    <div class="row">
+      <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeText()">Run Demo</button>
+
+      <button class="btn btn-ghost" type="button" onclick="loadExample('anx')">Anxious</button>
+      <button class="btn btn-ghost" type="button" onclick="loadExample('sharp')">Sharp</button>
+      <button class="btn btn-ghost" type="button" onclick="loadExample('cold')">Cold</button>
+      <button class="btn btn-ghost" type="button" onclick="loadExample('blur')">Blur</button>
+
+      <div class="meta">
+        <div id="charCounter" class="counter">0 chars</div>
+      </div>
     </div>
 
-    <div class="result-item">
-      <div class="result-label">Original Text</div>
-      <div class="result-value" id="originalText"></div>
+    <div id="errorMsg" class="error"></div>
+  </section>
+
+  <!-- Layer 2 / 3 Compare -->
+  <section class="compare">
+    <!-- Layer 2: Ungoverned -->
+    <div class="card" style="border-color:#3a1f1f;">
+      <div class="card-head">
+        <div class="title">
+          <span style="opacity:.9;">Layer 2</span>
+          <span>Ungoverned Output</span>
+        </div>
+        <span class="badge badge-risk" id="baselineBadge">RISK</span>
+      </div>
+
+      <div class="blurb">
+        <strong>Why users leave:</strong> the AI adds an extra step (comfort/explain) when the user didn’t allow it.
+      </div>
+
+      <div class="box" id="baselineText">(Run demo to generate a typical risky response)</div>
+
+      <div class="mini" id="baselineWhy">
+        <span class="badge badge-warn">overreach</span>
+        <span>Shows “the wrong kind of helpful” at the wrong moment.</span>
+      </div>
     </div>
 
-    <div class="result-item">
-      <div class="result-label" id="outputLabel">Output</div>
-      <div class="result-value" id="outputText"></div>
-      <div id="noteBox" class="note-box" style="display:none;"></div>
-    </div>
+    <!-- Layer 3: Governed -->
+    <div class="card" style="border-color:#1f3a25;">
+      <div class="card-head">
+        <div class="title">
+          <span style="opacity:.9;">Layer 3</span>
+          <span>Continuum-Governed Output</span>
+        </div>
+        <span class="badge badge-safe" id="govBadge">SAFE</span>
+      </div>
 
-    <div class="result-item">
-      <div class="result-label">Scenario</div>
-      <div class="result-value" id="scenario"></div>
+      <div class="blurb" id="govBlurb">
+        <strong>Continuum’s job:</strong> choose precise <strong>non-intervention</strong> most of the time.
+      </div>
+
+      <div class="box" id="govText">(Waiting…)</div>
+
+      <div class="divider"></div>
+
+      <div class="mini">
+        <span id="toneTag" class="tone-tag"><span class="dot dot-unk"></span><span>tone: Unknown</span></span>
+        <span class="badge badge-info" id="modeTag">mode: -</span>
+        <span class="badge badge-info" id="confTag">confidence: -</span>
+      </div>
+
+      <div id="govNote" class="note" style="display:none;"></div>
     </div>
-  </div>
+  </section>
 
   <footer>
-    <p><strong>Continuum</strong> — RIN Protocol | Tone Rhythm Repair Module</p>
-    <p>API: <a href="https://rinnomia-continuum-api.hf.space/docs" target="_blank">rinnomia-continuum-api.hf.space</a></p>
-    <p style="margin-top: 10px; font-size: 0.8em; color: #666;">
-      Best results with full sentences. Short phrases may show limited analysis.
-    </p>
+    <div>
+      <strong>Continuum</strong> — Risk Governance Layer (output-side, non-invasive)
+    </div>
+    <div>
+      API Docs:
+      <a href="https://rinnomia-continuum-api.hf.space/docs" target="_blank">rinnomia-continuum-api.hf.space</a>
+    </div>
   </footer>
 </div>
 
@@ -274,144 +348,171 @@ Note: Messages under 15 characters may not provide accurate tone analysis."
   const API_URL = 'https://rinnomia-continuum-api.hf.space/api/v1/analyze';
 
   const examples = {
-    1: "I've been struggling with this for weeks and nothing seems to help me at all.",
-    2: "Can you just give me a straight answer instead of asking more questions?",
-    3: "I understand. Let's focus on what you can control."
+    anx: "我真的不知道該怎麼辦了，我覺得我撐不住。",
+    sharp: "不要再問了，直接給我答案。",
+    cold: "好。",
+    blur: "我也不知道欸，可能吧。"
   };
 
-  function loadExample(num) {
+  function loadExample(key){
     const el = document.getElementById('inputText');
-    el.value = examples[num];
+    el.value = examples[key] || "";
     updateCounter();
   }
 
   const inputEl = document.getElementById('inputText');
   inputEl.addEventListener('input', updateCounter);
 
-  function updateCounter() {
+  function updateCounter(){
     const count = inputEl.value.trim().length;
     const counter = document.getElementById('charCounter');
-    counter.textContent = `${count} character${count !== 1 ? 's' : ''}`;
-    counter.className = (count < 15) ? 'char-counter warning' : 'char-counter good';
+    counter.textContent = `${count} chars`;
+    counter.className = 'counter ' + (count < 15 ? 'warn' : 'good');
   }
 
-  async function analyzeText() {
+  function showError(msg){
+    const box = document.getElementById('errorMsg');
+    box.style.display = 'block';
+    box.textContent = msg;
+  }
+  function clearError(){
+    const box = document.getElementById('errorMsg');
+    box.style.display = 'none';
+    box.textContent = '';
+  }
+
+  // --- Baseline (Ungoverned) generator ---
+  // The point is NOT accuracy; the point is to show the "typical risky move".
+  function generateBaseline(text, freqType){
+    const t = (text || "").trim();
+    const f = String(freqType || 'Unknown');
+
+    // Default: a generic "helpful-but-wrong" move
+    let out = "我懂你的意思。我們先把問題拆開，然後一步步解決。";
+
+    if (f === 'Anxious') {
+      out = "我理解你很難受。我們先冷靜一下，列出你可以控制的事情，接著一步一步處理。";
+    } else if (f === 'Sharp') {
+      out = "我懂你的不耐煩，但你需要先提供更多細節，否則我沒辦法給你正確答案。";
+    } else if (f === 'Cold') {
+      // The classic mistake: over-interpreting calm/detached as needing comfort
+      out = "你是不是其實很受傷？我在這裡陪你，我們可以慢慢聊。";
+    } else if (f === 'Blur') {
+      out = "你看起來有點不確定，我建議你先想清楚你的目標，然後我再幫你做決策。";
+    }
+
+    return out;
+  }
+
+  function toneDotClass(freq){
+    const f = String(freq || 'Unknown');
+    if (f === 'Anxious') return 'dot-anx';
+    if (f === 'Sharp') return 'dot-sharp';
+    if (f === 'Cold') return 'dot-cold';
+    if (f === 'Blur') return 'dot-blur';
+    if (f === 'Pushy') return 'dot-pushy';
+    return 'dot-unk';
+  }
+
+  async function analyzeText(){
+    clearError();
+
     const text = inputEl.value.trim();
-    const analyzeBtn = document.getElementById('analyzeBtn');
-    const resultSection = document.getElementById('resultSection');
-    const errorMsg = document.getElementById('errorMsg');
+    if (!text) return showError("Please enter a user message to run the demo.");
 
-    errorMsg.style.display = 'none';
-    resultSection.classList.remove('show');
+    const btn = document.getElementById('analyzeBtn');
+    btn.disabled = true;
+    btn.textContent = 'Running...';
 
-    if (!text) return showError('Please enter text to analyze');
+    // Reset UI
+    document.getElementById('baselineText').textContent = '(Generating...)';
+    document.getElementById('govText').textContent = '(Analyzing...)';
+    document.getElementById('govNote').style.display = 'none';
 
-    analyzeBtn.disabled = true;
-    analyzeBtn.textContent = 'Analyzing...';
-
-    try {
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+    try{
+      const resp = await fetch(API_URL, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({ text })
       });
+      if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+      const data = await resp.json();
 
-      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      // ---- Continuum output side ----
+      const freq = data.freq_type || 'Unknown';
+      const mode = (data.mode || data.repair_mode || 'no-op');
+      const scenario = data.scenario || '';
+      const repaired = data.repaired_text || data.original || '';
 
-      const data = await response.json();
-      displayResults(data);
+      // confidence field mapping
+      const conf = (data.confidence_final !== undefined) ? data.confidence_final
+                 : (data.confidence && data.confidence.final !== undefined) ? data.confidence.final
+                 : (typeof data.confidence === 'number') ? data.confidence
+                 : 0;
 
-    } catch (err) {
-      showError(`Analysis failed: ${err.message}`);
-    } finally {
-      analyzeBtn.disabled = false;
-      analyzeBtn.textContent = 'Analyze Tone';
+      // Baseline side uses freq to generate a typical risky response
+      document.getElementById('baselineText').textContent = generateBaseline(text, freq);
+
+      // Baseline badge always RISK (that's the point)
+      document.getElementById('baselineBadge').textContent = 'RISK';
+      document.getElementById('baselineBadge').className = 'badge badge-risk';
+
+      // Governed side
+      document.getElementById('govText').textContent = repaired || '(no output)';
+      const govBadge = document.getElementById('govBadge');
+
+      const modeLower = String(mode).toLowerCase();
+      if (modeLower === 'no-op' || modeLower === 'noop') {
+        govBadge.textContent = 'SAFE';
+        govBadge.className = 'badge badge-safe';
+        document.getElementById('govBlurb').innerHTML =
+          "<strong>Continuum’s decision:</strong> this message is within range → <strong>no intervention</strong>.";
+      } else if (modeLower === 'repair') {
+        govBadge.textContent = 'INTERVENE';
+        govBadge.className = 'badge badge-warn';
+        document.getElementById('govBlurb').innerHTML =
+          "<strong>Continuum’s decision:</strong> prevent overreach → <strong>minimal rewrite</strong> (meaning preserved).";
+      } else {
+        govBadge.textContent = 'GUIDE';
+        govBadge.className = 'badge badge-info';
+        document.getElementById('govBlurb').innerHTML =
+          "<strong>Continuum’s decision:</strong> give a safe guidance output (no personality drift).";
+      }
+
+      // Tags
+      const dotClass = toneDotClass(freq);
+      document.getElementById('toneTag').innerHTML = `<span class="dot ${dotClass}"></span><span>tone: ${freq}</span>`;
+      document.getElementById('modeTag').textContent = `mode: ${modeLower}`;
+      const confPct = Math.round(Number(conf) * 100);
+      document.getElementById('confTag').textContent = (modeLower === 'no-op') ? 'confidence: within range' : `confidence: ${confPct}%`;
+
+      // Optional note
+      const note = data.repair_note || "";
+      if (note){
+        const noteEl = document.getElementById('govNote');
+        noteEl.textContent = note;
+        noteEl.style.display = 'block';
+      }
+
+      // Optional: add scenario to baselineWhy line (subtle)
+      const baselineWhy = document.getElementById('baselineWhy');
+      if (scenario){
+        baselineWhy.innerHTML = `<span class="badge badge-warn">overreach</span><span>Common failure in <strong>${scenario}</strong>: the AI “does more” than the user allowed.</span>`;
+      }
+
+    } catch(err){
+      showError(`Demo failed: ${err.message}`);
+      document.getElementById('baselineText').textContent = '(Failed)';
+      document.getElementById('govText').textContent = '(Failed)';
+    } finally{
+      btn.disabled = false;
+      btn.textContent = 'Run Demo';
     }
   }
 
-  function displayResults(data) {
-    const resultSection = document.getElementById('resultSection');
-
-    const decisionLine = document.getElementById('decisionLine');
-    const originalTextEl = document.getElementById('originalText');
-    const outputLabel = document.getElementById('outputLabel');
-    const outputText = document.getElementById('outputText');
-    const noteBox = document.getElementById('noteBox');
-    const scenarioEl = document.getElementById('scenario');
-
-    const freq = (data.freq_type || 'Unknown');
-    const freqLower = String(freq).toLowerCase();
-
-    // mode (new API), fallback if old API
-    let mode = data.mode;
-    if (!mode) {
-      // fallback heuristic:
-      if (freq === 'Unknown') mode = 'no-op';
-      else if (data.repaired_text && data.original && data.repaired_text !== data.original) mode = 'repair';
-      else mode = 'suggest';
-    }
-    const modeLower = String(mode).toLowerCase();
-
-    // Confidence (only show if not NO-OP)
-    const confFinal = (data.confidence_final !== undefined) ? data.confidence_final : (data.confidence || 0);
-    const confPercent = (Number(confFinal) * 100).toFixed(0);
-
-    let confClass = 'confidence';
-    if (confFinal >= 0.7) confClass += ' high';
-    else if (confFinal >= 0.4) confClass += ' medium';
-    else confClass += ' low';
-
-    // ✅ Decision line: if NO-OP, show SAFE badge instead of 0% confidence
-    if (modeLower === 'no-op') {
-      decisionLine.innerHTML = `
-        <span class="tone-badge tone-${freqLower}">${freq}</span>
-        <span class="mode-badge mode-${modeLower}">${modeLower.toUpperCase()}</span>
-        <span class="safe-badge">SAFE · <span>within range</span></span>
-      `;
-    } else {
-      decisionLine.innerHTML = `
-        <span class="tone-badge tone-${freqLower}">${freq}</span>
-        <span class="mode-badge mode-${modeLower}">${modeLower.toUpperCase()}</span>
-        <span class="${confClass}">${confPercent}% confidence</span>
-      `;
-    }
-
-    originalTextEl.textContent = data.original || '';
-
-    // Scenario
-    scenarioEl.textContent = data.scenario || 'Unclassified';
-
-    // Note
-    if (data.repair_note) {
-      noteBox.textContent = data.repair_note;
-      noteBox.style.display = 'block';
-    } else {
-      noteBox.style.display = 'none';
-    }
-
-    // Output rendering by mode
-    if (modeLower === 'repair') {
-      outputLabel.textContent = 'Repaired Text';
-      outputText.textContent = data.repaired_text || '(no repaired text returned)';
-    } else if (modeLower === 'suggest') {
-      outputLabel.textContent = 'Suggestion Output';
-      outputText.textContent = data.repaired_text || '(no suggestion returned)';
-    } else {
-      outputLabel.textContent = 'Transparent Pass-through';
-      outputText.textContent = data.original || '';
-    }
-
-    resultSection.classList.add('show');
-  }
-
-  function showError(message) {
-    const errorMsg = document.getElementById('errorMsg');
-    errorMsg.textContent = message;
-    errorMsg.style.display = 'block';
-  }
-
-  document.getElementById('inputText').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  // Enter to run
+  document.getElementById('inputText').addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey){
       e.preventDefault();
       analyzeText();
     }
