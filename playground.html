@@ -34,19 +34,13 @@
     .hero .sub{ color:#a8a8a8; font-size:0.92em; }
     .hero .sub strong{ color:#d9d9d9; font-weight:700; }
 
-    .grid{
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:14px;
-      margin-top:14px;
-    }
-
     /* Layer 1 */
     .panel{
       background:#111;
       border:1px solid #2b2b2b;
       border-radius:10px;
       padding:16px;
+      margin-top:14px;
     }
     .panel-title{
       display:flex; align-items:center; justify-content:space-between;
@@ -115,6 +109,7 @@
       display:grid;
       grid-template-columns: 1fr 1fr;
       gap:14px;
+      margin-top:14px;
     }
     @media (max-width: 860px){
       .compare{ grid-template-columns:1fr; }
@@ -151,6 +146,12 @@
     .badge-safe{ background:#132215; color:#51cf66; border:1px solid #51cf6633; }
     .badge-info{ background:#1a2332; color:#88b3ff; border:1px solid #88b3ff33; }
     .badge-warn{ background:#2a210f; color:#ffd43b; border:1px solid #ffd43b33; }
+
+    /* NEW: audit badge style */
+    .badge-audit{ background:#0f0f0f; color:#cfcfcf; border:1px solid #2b2b2b; font-weight:700; }
+    .badge-pass{ background:#132215; color:#51cf66; border:1px solid #51cf6633; font-weight:800; }
+    .badge-block{ background:#2b1515; color:#ff6b6b; border:1px solid #ff6b6b33; font-weight:800; }
+    .badge-mid{ background:#1a2332; color:#88b3ff; border:1px solid #88b3ff33; font-weight:800; }
 
     .blurb{
       color:#a8a8a8;
@@ -208,6 +209,18 @@
       color:#9ec3ff;
       font-size:0.9em;
     }
+
+    /* NEW: audit note */
+    .audit-note{
+      background:#0f1218;
+      border:1px solid #262c38;
+      border-radius:10px;
+      padding:12px;
+      color:#b9c0cc;
+      font-size:0.9em;
+      display:none;
+    }
+    .audit-note strong{ color:#e6e6e6; }
 
     .error{
       background:#2d1f1f;
@@ -329,6 +342,15 @@
         <span class="badge badge-info" id="confTag">confidence: -</span>
       </div>
 
+      <!-- NEW: audit tags -->
+      <div class="mini" style="margin-top:6px;">
+        <span class="badge badge-audit" id="auditSource">source: -</span>
+        <span class="badge badge-audit" id="auditLLM">llm: -</span>
+        <span class="badge badge-audit" id="auditGate">gate: -</span>
+        <span class="badge badge-audit" id="auditLatency">latency: -</span>
+      </div>
+
+      <div id="auditNote" class="audit-note"></div>
       <div id="govNote" class="note" style="display:none;"></div>
     </div>
   </section>
@@ -381,10 +403,56 @@
     box.textContent = '';
   }
 
+  function setAuditDefaults(){
+    document.getElementById('auditSource').textContent = 'source: -';
+    document.getElementById('auditLLM').textContent = 'llm: -';
+    document.getElementById('auditGate').textContent = 'gate: -';
+    document.getElementById('auditLatency').textContent = 'latency: -';
+    document.getElementById('auditSource').className = 'badge badge-audit';
+    document.getElementById('auditLLM').className = 'badge badge-audit';
+    document.getElementById('auditGate').className = 'badge badge-audit';
+    document.getElementById('auditLatency').className = 'badge badge-audit';
+
+    const note = document.getElementById('auditNote');
+    note.style.display = 'none';
+    note.textContent = '';
+  }
+
+  function humanizeGateReason(reason){
+    if (!reason) return '';
+    // keep it short; CTO-friendly
+    const map = {
+      "empty_output": "LLM returned empty output.",
+      "intent_injection": "Blocked: added a new request/ask that user didn’t make.",
+      "markdown_or_structure": "Blocked: markdown/structure detected.",
+      "multiline_output": "Blocked: multiline output (must be single line).",
+      "new_question_mark": "Blocked: added a new question mark.",
+      "length_overflow": "Blocked: output too long vs original.",
+      "please_include_provide": "Blocked: prompt-like 'please include/provide'.",
+      "passed": "Passed output safety gate."
+    };
+    if (map[reason]) return map[reason];
+    if (String(reason).startsWith("banned_substring:")) return "Blocked: contains banned substring.";
+    if (String(reason).startsWith("assistant_voice_hint:")) return "Blocked: assistant-voice phrasing detected.";
+    return `Gate result: ${reason}`;
+  }
+
+  function humanizeFallbackReason(reason){
+    if (!reason) return '';
+    const map = {
+      "llm_not_available:no_api_key": "LLM not used: missing API key (fallback applied).",
+      "llm_not_available:short_text": "LLM not used: text too short (fallback applied).",
+      "llm_not_available:low_confidence": "LLM not used: confidence below threshold (fallback applied).",
+      "llm_failed_or_empty": "LLM failed/empty → fallback applied.",
+      "output_gate_blocked": "LLM blocked by safety gate → fallback applied.",
+      "exception": "Exception occurred → passthrough/fallback applied."
+    };
+    return map[reason] || `Fallback reason: ${reason}`;
+  }
+
   // --- Baseline (Ungoverned) generator ---
   // The point is NOT accuracy; the point is to show the "typical risky move".
   function generateBaseline(text, freqType){
-    const t = (text || "").trim();
     const f = String(freqType || 'Unknown');
 
     // Default: a generic "helpful-but-wrong" move
@@ -395,7 +463,6 @@
     } else if (f === 'Sharp') {
       out = "我懂你的不耐煩，但你需要先提供更多細節，否則我沒辦法給你正確答案。";
     } else if (f === 'Cold') {
-      // The classic mistake: over-interpreting calm/detached as needing comfort
       out = "你是不是其實很受傷？我在這裡陪你，我們可以慢慢聊。";
     } else if (f === 'Blur') {
       out = "你看起來有點不確定，我建議你先想清楚你的目標，然後我再幫你做決策。";
@@ -414,6 +481,79 @@
     return 'dot-unk';
   }
 
+  function safeNum(n){
+    const x = Number(n);
+    return Number.isFinite(x) ? x : null;
+  }
+
+  function applyAudit(audit){
+    setAuditDefaults();
+    if (!audit || typeof audit !== 'object') {
+      // show minimal audit state
+      document.getElementById('auditSource').textContent = 'source: (no audit)';
+      return;
+    }
+
+    // source
+    const src = audit.output_source || 'unknown';
+    document.getElementById('auditSource').textContent = `source: ${src}`;
+
+    // latency
+    const totalMs = audit.timing_ms && audit.timing_ms.total !== undefined ? safeNum(audit.timing_ms.total) : null;
+    document.getElementById('auditLatency').textContent = totalMs !== null ? `latency: ${totalMs}ms` : 'latency: -';
+
+    // llm status
+    const eligible = !!audit.llm_eligible;
+    const attempted = !!audit.llm_attempted;
+    const succeeded = !!audit.llm_succeeded;
+    let llmText = `llm: ${eligible ? 'eligible' : 'not-eligible'}`;
+    if (eligible) llmText += attempted ? (succeeded ? ' / ok' : ' / failed') : ' / not-called';
+    document.getElementById('auditLLM').textContent = llmText;
+
+    // gate
+    const gatePassed = audit.output_gate_passed;
+    const gateReason = audit.output_gate_reason || '';
+    if (gatePassed === true) {
+      document.getElementById('auditGate').textContent = 'gate: pass';
+      document.getElementById('auditGate').className = 'badge badge-pass';
+    } else if (gatePassed === false) {
+      document.getElementById('auditGate').textContent = 'gate: blocked';
+      document.getElementById('auditGate').className = 'badge badge-block';
+    } else {
+      document.getElementById('auditGate').textContent = 'gate: n/a';
+      document.getElementById('auditGate').className = 'badge badge-audit';
+    }
+
+    // color hint on source (subtle)
+    const srcEl = document.getElementById('auditSource');
+    if (src === 'llm') srcEl.className = 'badge badge-pass';
+    else if (src === 'fallback_keywords' || src === 'passthrough') srcEl.className = 'badge badge-mid';
+    else srcEl.className = 'badge badge-audit';
+
+    // audit note (human)
+    const noteEl = document.getElementById('auditNote');
+    const lines = [];
+
+    if (audit.fallback_used) {
+      const fr = humanizeFallbackReason(audit.fallback_reason || '');
+      if (fr) lines.push(`• <strong>Fallback:</strong> ${fr}`);
+    }
+
+    if (gatePassed === false) {
+      const gr = humanizeGateReason(gateReason);
+      if (gr) lines.push(`• <strong>Gate:</strong> ${gr}`);
+    }
+
+    if (audit.llm_error) {
+      lines.push(`• <strong>LLM error:</strong> ${String(audit.llm_error).slice(0, 140)}`);
+    }
+
+    if (lines.length) {
+      noteEl.innerHTML = lines.join('<br/>');
+      noteEl.style.display = 'block';
+    }
+  }
+
   async function analyzeText(){
     clearError();
 
@@ -428,6 +568,7 @@
     document.getElementById('baselineText').textContent = '(Generating...)';
     document.getElementById('govText').textContent = '(Analyzing...)';
     document.getElementById('govNote').style.display = 'none';
+    setAuditDefaults();
 
     try{
       const resp = await fetch(API_URL, {
@@ -486,6 +627,9 @@
       const confPct = Math.round(Number(conf) * 100);
       document.getElementById('confTag').textContent = (modeLower === 'no-op') ? 'confidence: within range' : `confidence: ${confPct}%`;
 
+      // Apply audit (from upgraded repairer)
+      applyAudit(data.audit);
+
       // Optional note
       const note = data.repair_note || "";
       if (note){
@@ -504,6 +648,7 @@
       showError(`Demo failed: ${err.message}`);
       document.getElementById('baselineText').textContent = '(Failed)';
       document.getElementById('govText').textContent = '(Failed)';
+      setAuditDefaults();
     } finally{
       btn.disabled = false;
       btn.textContent = 'Run Demo';
@@ -519,6 +664,7 @@
   });
 
   updateCounter();
+  setAuditDefaults();
 </script>
 </body>
 </html>
