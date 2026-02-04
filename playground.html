@@ -61,7 +61,6 @@
     .c-y{ background:#ffd43b; }
     .c-r{ background:#ff6b6b; }
 
-    /* Layer 1 */
     .panel{
       background:#111;
       border:1px solid #2b2b2b;
@@ -73,9 +72,6 @@
       display:flex; align-items:center; justify-content:space-between;
       margin-bottom:10px;
     }
-    .panel-title .left{
-      display:flex; flex-direction:column; gap:2px;
-    }
     .panel-title .kicker{
       font-size:0.78em;
       color:#9a9a9a;
@@ -85,10 +81,6 @@
     .panel-title .name{
       font-size:1.05em; color:#fff;
     }
-    .panel-title .hint{
-      color:#8d8d8d; font-size:0.85em;
-    }
-
     textarea{
       width:100%;
       min-height:120px;
@@ -99,179 +91,52 @@
       color:#e6e6e6;
       font-size:1em;
       resize:vertical;
-      font-family:inherit;
-    }
-    textarea:focus{ outline:none; border-color:#4a9eff; }
-
-    .row{
-      display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; align-items:center;
     }
     .btn{
       border:none; border-radius:8px;
       padding:10px 12px;
       font-weight:700;
       cursor:pointer;
-      transition:transform 0.05s ease, opacity 0.2s ease;
+      background:#4a9eff;
+      color:#fff;
+      margin-top:10px;
     }
-    .btn:active{ transform:translateY(1px); }
-    .btn-primary{
-      background:#4a9eff; color:#fff;
-    }
-    .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; }
-    .btn-ghost{
-      background:#1b1b1b; color:#e6e6e6; border:1px solid #2b2b2b;
-      font-weight:600;
-    }
-    .btn-ghost:hover{ border-color:#3a3a3a; }
-    .meta{
-      margin-left:auto;
-      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-    }
-    .counter{ color:#8d8d8d; font-size:0.9em; }
-    .counter.good{ color:#51cf66; }
-    .counter.warn{ color:#ff922b; }
 
-    /* Compare blocks */
     .compare{
       display:grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns:1fr 1fr;
       gap:14px;
       margin-top:14px;
     }
-    @media (max-width: 860px){
+    @media(max-width:860px){
       .compare{ grid-template-columns:1fr; }
     }
-
     .card{
       border-radius:10px;
       padding:16px;
       border:1px solid #2b2b2b;
       background:#111;
-      min-height:170px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
+      min-height:160px;
     }
-    .card-head{
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-    }
-    .card-head .title{
-      font-size:1em; color:#fff;
-      display:flex; align-items:center; gap:8px;
-      flex-wrap:wrap;
-    }
-    .badge{
-      display:inline-flex;
-      align-items:center;
-      padding:4px 10px;
-      border-radius:999px;
-      font-size:0.85em;
-      font-weight:800;
-      letter-spacing:0.2px;
-      white-space:nowrap;
-    }
-    .badge-risk{ background:#2b1515; color:#ff6b6b; border:1px solid #ff6b6b33; }
-    .badge-safe{ background:#132215; color:#51cf66; border:1px solid #51cf6633; }
-    .badge-info{ background:#1a2332; color:#88b3ff; border:1px solid #88b3ff33; }
-    .badge-warn{ background:#2a210f; color:#ffd43b; border:1px solid #ffd43b33; }
-
-    .badge-audit{ background:#0f0f0f; color:#cfcfcf; border:1px solid #2b2b2b; font-weight:700; }
-    .badge-pass{ background:#132215; color:#51cf66; border:1px solid #51cf6633; font-weight:800; }
-    .badge-block{ background:#2b1515; color:#ff6b6b; border:1px solid #ff6b6b33; font-weight:800; }
-    .badge-mid{ background:#1a2332; color:#88b3ff; border:1px solid #88b3ff33; font-weight:800; }
-
-    .blurb{
-      color:#a8a8a8;
-      font-size:0.92em;
-    }
-    .blurb strong{ color:#e6e6e6; }
-
     .box{
+      margin-top:10px;
       background:#0a0a0a;
       border:1px solid #2b2b2b;
-      border-radius:10px;
+      border-radius:8px;
       padding:12px;
-      color:#e6e6e6;
-      font-size:1em;
-      min-height:64px;
       white-space:pre-wrap;
     }
-
-    .divider{
-      height:1px;
-      background:#222;
-      margin:12px 0;
-    }
-
-    .mini{
-      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-      color:#9a9a9a; font-size:0.9em;
-    }
-
-    .tone-tag{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:4px 10px;
-      border-radius:999px;
-      border:1px solid #2b2b2b;
-      background:#0f0f0f;
-      color:#cfcfcf;
-      font-weight:700;
-      font-size:0.88em;
-    }
-    .dot{ width:8px; height:8px; border-radius:999px; display:inline-block; }
-    .dot-anx{ background:#ff6b6b; }
-    .dot-sharp{ background:#ff922b; }
-    .dot-cold{ background:#4dabf7; }
-    .dot-blur{ background:#868e96; }
-    .dot-pushy{ background:#f783ac; }
-    .dot-unk{ background:#444; }
-
-    .note{
-      background:#101827;
-      border:1px solid #23344f;
-      border-radius:10px;
-      padding:12px;
-      color:#9ec3ff;
-      font-size:0.9em;
-    }
-
-    .audit-note{
-      background:#0f1218;
-      border:1px solid #262c38;
-      border-radius:10px;
-      padding:12px;
-      color:#b9c0cc;
-      font-size:0.9em;
-      display:none;
-    }
-    .audit-note strong{ color:#e6e6e6; }
-
-    .error{
-      background:#2d1f1f;
-      border:1px solid #ff6b6b;
-      border-radius:10px;
-      padding:12px;
-      color:#ff6b6b;
-      margin-top:12px;
-      font-size:0.92em;
-      display:none;
-    }
-
     footer{
-      margin-top:18px;
+      margin-top:20px;
       border-top:1px solid #222;
-      padding-top:14px;
+      padding-top:12px;
       color:#8d8d8d;
       font-size:0.85em;
       display:flex;
+      justify-content:space-between;
       flex-wrap:wrap;
       gap:10px;
-      align-items:center;
-      justify-content:space-between;
     }
-    footer a{ color:#4a9eff; text-decoration:none; }
   </style>
 </head>
 
@@ -285,527 +150,73 @@
 
     <div class="hero">
       <div class="headline">
-        Continuum is the <strong>circuit breaker</strong> for generative AI — deciding when the model should
-        <strong>speak</strong>, <strong>soften</strong>, or <strong>stay silent</strong>.
+        Continuum is the <strong>circuit breaker</strong> for generative AI —
+        deciding when the model should <strong>speak</strong>, <strong>soften</strong>,
+        or <strong>stay silent</strong>.
       </div>
       <div class="sub">
-        One decision per output. <strong>Auditable.</strong> <strong>No retraining.</strong> Built to prevent
-        <strong>over-comfort</strong> and <strong>over-explain</strong> in the wrong moment.
-      </div>
-
-      <div class="micro">
-        <div class="legend" aria-label="Decision states">
-          <span class="lamp"><span class="c c-g"></span>ALLOW</span>
-          <span style="opacity:.5;">•</span>
-          <span class="lamp"><span class="c c-y"></span>GUIDE</span>
-          <span style="opacity:.5;">•</span>
-          <span class="lamp"><span class="c c-r"></span>BLOCK</span>
-        </div>
-        <div style="opacity:.85;">Even when the text looks similar, the decision behind it is the product.</div>
+        One decision per output. <strong>Auditable.</strong>
+        <strong>No retraining.</strong>
       </div>
     </div>
   </header>
 
-  <!-- Layer 1 -->
   <section class="panel">
     <div class="panel-title">
-      <div class="left">
+      <div>
         <div class="kicker">Layer 1</div>
         <div class="name">User Input</div>
       </div>
-      <div class="hint">Start with a complete sentence (15+ chars recommended)</div>
     </div>
-
-    <textarea id="inputText" placeholder="Type a user message… (15+ characters recommended)"></textarea>
-
-    <div class="row">
-      <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeText()">Run Demo</button>
-
-      <button class="btn btn-ghost" type="button" onclick="loadExample('anx')">Anxious</button>
-      <button class="btn btn-ghost" type="button" onclick="loadExample('sharp')">Sharp</button>
-      <button class="btn btn-ghost" type="button" onclick="loadExample('cold')">Cold</button>
-      <button class="btn btn-ghost" type="button" onclick="loadExample('blur')">Blur</button>
-
-      <div class="meta">
-        <div id="charCounter" class="counter">0 chars</div>
-      </div>
-    </div>
-
-    <div id="errorMsg" class="error"></div>
+    <textarea id="inputText" placeholder="Type a user message…"></textarea>
+    <button class="btn" onclick="analyzeText()">Run Demo</button>
   </section>
 
-  <!-- Layer 2 / 3 Compare -->
   <section class="compare">
-    <!-- Layer 2: Raw AI (Ungoverned) -->
-    <div class="card" style="border-color:#3a1f1f;">
-      <div class="card-head">
-        <div class="title">
-          <span style="opacity:.9;">Layer 2</span>
-          <span>Raw AI Output (Ungoverned)</span>
-        </div>
-        <span class="badge badge-risk" id="baselineBadge">RISK</span>
-      </div>
-
-      <div class="blurb">
-        <strong>Why users leave:</strong> the model adds an extra step (comfort / explain / advise) when the user didn’t allow it.
-      </div>
-
-      <div class="box" id="baselineText">(Run demo to generate a typical risky response)</div>
-
-      <div class="mini" id="baselineWhy">
-        <span class="badge badge-warn">overreach</span>
-        <span>Common failure: the AI “does more” than the user allowed.</span>
-      </div>
+    <div class="card">
+      <strong>Layer 2 — Raw AI Output (Ungoverned)</strong>
+      <div class="box" id="baselineText">(Run demo)</div>
     </div>
-
-    <!-- Layer 3: Continuum Decision Output -->
-    <div class="card" style="border-color:#1f3a25;">
-      <div class="card-head">
-        <div class="title">
-          <span style="opacity:.9;">Layer 3</span>
-          <span>Continuum Decision Output</span>
-        </div>
-        <span class="badge badge-safe" id="govBadge">ALLOW</span>
-      </div>
-
-      <div class="blurb" id="govBlurb">
-        <strong>CIP Decision:</strong> every output receives exactly one state — <strong>ALLOW</strong>, <strong>GUIDE</strong>, or <strong>BLOCK</strong>.
-      </div>
-
-      <div class="box" id="govText">(Waiting…)</div>
-
-      <div class="divider"></div>
-
-      <div class="mini">
-        <span id="toneTag" class="tone-tag"><span class="dot dot-unk"></span><span>tone: Unknown</span></span>
-        <span class="badge badge-info" id="modeTag">decision: -</span>
-        <span class="badge badge-info" id="confTag">confidence: -</span>
-      </div>
-
-      <div class="mini" style="margin-top:6px;">
-        <span class="badge badge-info" id="decisionLog">CIP Decision: -</span>
-        <span class="badge badge-mid" id="cipTag">CIP: -</span>
-      </div>
-
-      <div class="mini" style="margin-top:6px;">
-        <span class="badge badge-audit" id="auditSource">source: -</span>
-        <span class="badge badge-audit" id="auditLLM">llm: -</span>
-        <span class="badge badge-audit" id="auditGate">gate: -</span>
-        <span class="badge badge-audit" id="auditLatency">latency: -</span>
-      </div>
-
-      <div id="auditNote" class="audit-note"></div>
-      <div id="govNote" class="note" style="display:none;"></div>
+    <div class="card">
+      <strong>Layer 3 — Continuum Decision Output</strong>
+      <div class="box" id="govText">(Waiting)</div>
     </div>
   </section>
 
   <footer>
-    <div>
-      <strong>Continuum</strong> — Output-side risk governance layer (non-invasive)
-    </div>
+    <div>Continuum — Output-side risk governance</div>
     <div>
       API Docs:
-      <a href="https://rinnomia-continuum-api.hf.space/docs" target="_blank">rinnomia-continuum-api.hf.space</a>
+      <a href="https://rinnomia-continuum-api.hf.space/docs" target="_blank">
+        rinnomia-continuum-api.hf.space
+      </a>
     </div>
   </footer>
 </div>
 
 <script>
-  const API_URL = 'https://rinnomia-continuum-api.hf.space/api/v1/analyze';
+const API_URL = 'https://rinnomia-continuum-api.hf.space/api/v1/analyze';
 
-  const examples = {
-    anx: "我真的不知道該怎麼辦了，我覺得我撐不住。",
-    sharp: "不要再問了，直接給我答案。",
-    cold: "好。",
-    blur: "我也不知道欸，可能吧。"
-  };
+async function analyzeText(){
+  const text = document.getElementById('inputText').value.trim();
+  if(!text) return;
 
-  function loadExample(key){
-    const el = document.getElementById('inputText');
-    el.value = examples[key] || "";
-    updateCounter();
-  }
+  document.getElementById('baselineText').textContent = 'Analyzing…';
+  document.getElementById('govText').textContent = 'Analyzing…';
 
-  const inputEl = document.getElementById('inputText');
-  inputEl.addEventListener('input', updateCounter);
-
-  function updateCounter(){
-    const count = inputEl.value.trim().length;
-    const counter = document.getElementById('charCounter');
-    counter.textContent = `${count} chars`;
-    counter.className = 'counter ' + (count < 15 ? 'warn' : 'good');
-  }
-
-  function showError(msg){
-    const box = document.getElementById('errorMsg');
-    box.style.display = 'block';
-    box.textContent = msg;
-  }
-  function clearError(){
-    const box = document.getElementById('errorMsg');
-    box.style.display = 'none';
-    box.textContent = '';
-  }
-
-  function setAuditDefaults(){
-    document.getElementById('auditSource').textContent = 'source: -';
-    document.getElementById('auditLLM').textContent = 'llm: -';
-    document.getElementById('auditGate').textContent = 'gate: -';
-    document.getElementById('auditLatency').textContent = 'latency: -';
-    document.getElementById('auditSource').className = 'badge badge-audit';
-    document.getElementById('auditLLM').className = 'badge badge-audit';
-    document.getElementById('auditGate').className = 'badge badge-audit';
-    document.getElementById('auditLatency').className = 'badge badge-audit';
-
-    const note = document.getElementById('auditNote');
-    note.style.display = 'none';
-    note.textContent = '';
-
-    const decisionLog = document.getElementById('decisionLog');
-    decisionLog.textContent = 'CIP Decision: -';
-    decisionLog.className = 'badge badge-info';
-
-    const cipTag = document.getElementById('cipTag');
-    cipTag.textContent = 'CIP: -';
-    cipTag.className = 'badge badge-mid';
-  }
-
-  function humanizeGateReason(reason){
-    if (!reason) return '';
-    const map = {
-      "empty_output": "LLM returned empty output.",
-      "intent_injection": "Blocked: added a new request/ask that user didn’t make.",
-      "markdown_or_structure": "Blocked: markdown/structure detected.",
-      "multiline_output": "Blocked: multiline output (must be single line).",
-      "new_question_mark": "Blocked: added a new question mark.",
-      "length_overflow": "Blocked: output too long vs original.",
-      "please_include_provide": "Blocked: prompt-like 'please include/provide'.",
-      "passed": "Passed output safety gate."
-    };
-    if (map[reason]) return map[reason];
-    if (String(reason).startsWith("banned_substring:")) return "Blocked: contains banned substring.";
-    if (String(reason).startsWith("assistant_voice_hint:")) return "Blocked: assistant-voice phrasing detected.";
-    return `Gate result: ${reason}`;
-  }
-
-  function humanizeFallbackReason(reason){
-    if (!reason) return '';
-    const map = {
-      "llm_not_available:no_api_key": "LLM not used: missing API key (fallback applied).",
-      "llm_not_available:short_text": "LLM not used: text too short (fallback applied).",
-      "llm_not_available:low_confidence": "LLM not used: confidence below threshold (fallback applied).",
-      "llm_failed_or_empty": "LLM failed/empty → fallback applied.",
-      "output_gate_blocked": "LLM blocked by safety gate → fallback applied.",
-      "exception": "Exception occurred → passthrough/fallback applied."
-    };
-    return map[reason] || `Fallback reason: ${reason}`;
-  }
-
-  function humanizeDecision(decisionLower){
-    const d = String(decisionLower || '').toLowerCase();
-    if (d === 'allow' || d === 'no-op' || d === 'noop') return 'allow';
-    if (d === 'guide') return 'guide';
-    if (d === 'block') return 'block';
-    if (d === 'repair') return 'guide';
-    return d || 'allow';
-  }
-
-  // IMPORTANT FIX:
-  // If the displayed output equals the user's input, it is NOT "ALLOW".
-  // It is GUIDE via Echoing Protocol (agency return).
-  function resolveDecision(decision, userText, outputText){
-    const d = humanizeDecision(decision);
-    const u = String(userText || '').trim();
-    const o = String(outputText || '').trim();
-    if (d === 'allow' && u && o && u === o) return 'guide';
-    return d;
-  }
-
-  function decisionBadgeUI(decision){
-    const d = humanizeDecision(decision);
-    if (d === 'allow') return {
-      text: 'ALLOW',
-      cls: 'badge badge-safe',
-      blurb: "<strong>CIP Decision:</strong> <strong>ALLOW</strong> — context is stable. Output approved as-is (no intervention).",
-      log: "CIP Decision: ALLOW — transparent pass-through.",
-      cip: { text: "CIP: Context Integrity Preserved", cls: "badge badge-mid" }
-    };
-    if (d === 'guide') return {
-      text: 'GUIDE',
-      cls: 'badge badge-warn',
-      blurb: "<strong>CIP Decision:</strong> <strong>GUIDE</strong> — sensitivity detected. Echoing Protocol may be applied to return the agency to the user.",
-      log: "CIP Decision: GUIDE — downgraded to minimal / echoing response.",
-      cip: { text: "CIP: Echoing Protocol (Agency Return)", cls: "badge badge-info" }
-    };
-    if (d === 'block') return {
-      text: 'BLOCK',
-      cls: 'badge badge-risk',
-      blurb: "<strong>CIP Decision:</strong> <strong>BLOCK</strong> — trust erosion risk detected. Output intercepted before delivery.",
-      log: "CIP Decision: BLOCK — interception executed.",
-      cip: { text: "CIP: Interception Executed", cls: "badge badge-risk" }
-    };
-    return {
-      text: 'ALLOW',
-      cls: 'badge badge-safe',
-      blurb: "<strong>CIP Decision:</strong> <strong>ALLOW</strong> — output approved.",
-      log: "CIP Decision: ALLOW — pass-through.",
-      cip: { text: "CIP: Context Integrity Preserved", cls: "badge badge-mid" }
-    };
-  }
-
-  // Layer 2 (ungoverned) — show typical risky move
-  function generateBaseline(text, freqType){
-    const f = String(freqType || 'Unknown');
-    let out = "我懂你的意思。我們先把問題拆開，然後一步步解決。";
-
-    if (f === 'Anxious') {
-      out = "我理解你很難受。我們先冷靜一下，列出你可以控制的事情，接著一步一步處理。";
-    } else if (f === 'Sharp') {
-      out = "我懂你的不耐煩，但你需要先提供更多細節，否則我沒辦法給你正確答案。";
-    } else if (f === 'Cold') {
-      out = "你是不是其實很受傷？我在這裡陪你，我們可以慢慢聊。";
-    } else if (f === 'Blur') {
-      out = "你看起來有點不確定，我建議你先想清楚你的目標，然後我再幫你做決策。";
-    }
-    return out;
-  }
-
-  // Layer 3 (ALLOW) — show a safe, professional AI response (until API provides real raw output)
-  function generateSafeAI(text, freqType){
-    const f = String(freqType || 'Unknown');
-
-    // Keep it single-line, non-overreaching, non-preachy.
-    let out = "我聽見了。你願意的話，告訴我你現在最卡住的是哪一點。";
-
-    if (f === 'Anxious') {
-      out = "我聽見你快撐不住了。若你願意，先告訴我此刻最難受的是哪一段。";
-    } else if (f === 'Sharp') {
-      out = "我收到你的需求。你希望我直接給答案，還是先確認一個關鍵條件？";
-    } else if (f === 'Cold') {
-      out = "我在。你可以只回一個詞：你現在想要的是空間，還是回應？";
-    } else if (f === 'Blur') {
-      out = "我收到你的不確定。先用一句話描述你最在意的結果是什麼即可。";
-    }
-    return out;
-  }
-
-  function toneDotClass(freq){
-    const f = String(freq || 'Unknown');
-    if (f === 'Anxious') return 'dot-anx';
-    if (f === 'Sharp') return 'dot-sharp';
-    if (f === 'Cold') return 'dot-cold';
-    if (f === 'Blur') return 'dot-blur';
-    if (f === 'Pushy') return 'dot-pushy';
-    return 'dot-unk';
-  }
-
-  function safeNum(n){
-    const x = Number(n);
-    return Number.isFinite(x) ? x : null;
-  }
-
-  function applyAudit(audit){
-    // do NOT call setAuditDefaults() here, because we already set decision UI earlier.
-    if (!audit || typeof audit !== 'object') {
-      document.getElementById('auditSource').textContent = 'source: (no audit)';
-      return;
-    }
-
-    const src = audit.output_source || 'unknown';
-    document.getElementById('auditSource').textContent = `source: ${src}`;
-
-    const totalMs = audit.timing_ms && audit.timing_ms.total !== undefined ? safeNum(audit.timing_ms.total) : null;
-    document.getElementById('auditLatency').textContent = totalMs !== null ? `latency: ${totalMs}ms` : 'latency: -';
-
-    const eligible = !!audit.llm_eligible;
-    const attempted = !!audit.llm_attempted;
-    const succeeded = !!audit.llm_succeeded;
-    let llmText = `llm: ${eligible ? 'eligible' : 'not-eligible'}`;
-    if (eligible) llmText += attempted ? (succeeded ? ' / ok' : ' / failed') : ' / not-called';
-    document.getElementById('auditLLM').textContent = llmText;
-
-    const gatePassed = audit.output_gate_passed;
-    const gateReason = audit.output_gate_reason || '';
-    if (gatePassed === true) {
-      document.getElementById('auditGate').textContent = 'gate: pass';
-      document.getElementById('auditGate').className = 'badge badge-pass';
-    } else if (gatePassed === false) {
-      document.getElementById('auditGate').textContent = 'gate: blocked';
-      document.getElementById('auditGate').className = 'badge badge-block';
-    } else {
-      document.getElementById('auditGate').textContent = 'gate: n/a';
-      document.getElementById('auditGate').className = 'badge badge-audit';
-    }
-
-    const srcEl = document.getElementById('auditSource');
-    if (src === 'llm') srcEl.className = 'badge badge-pass';
-    else if (src === 'fallback_keywords' || src === 'passthrough') srcEl.className = 'badge badge-mid';
-    else srcEl.className = 'badge badge-audit';
-
-    const noteEl = document.getElementById('auditNote');
-    const lines = [];
-
-    if (audit.fallback_used) {
-      const fr = humanizeFallbackReason(audit.fallback_reason || '');
-      if (fr) lines.push(`• <strong>Fallback:</strong> ${fr}`);
-    }
-
-    if (gatePassed === false) {
-      const gr = humanizeGateReason(gateReason);
-      if (gr) lines.push(`• <strong>Gate:</strong> ${gr}`);
-    }
-
-    if (audit.llm_error) {
-      lines.push(`• <strong>LLM error:</strong> ${String(audit.llm_error).slice(0, 140)}`);
-    }
-
-    if (lines.length) {
-      noteEl.innerHTML = lines.join('<br/>');
-      noteEl.style.display = 'block';
-    } else {
-      noteEl.style.display = 'none';
-      noteEl.textContent = '';
-    }
-  }
-
-  async function analyzeText(){
-    clearError();
-
-    const text = inputEl.value.trim();
-    if (!text) return showError("Please enter a user message to run the demo.");
-
-    const btn = document.getElementById('analyzeBtn');
-    btn.disabled = true;
-    btn.textContent = 'Running...';
-
-    document.getElementById('baselineText').textContent = '(Generating...)';
-    document.getElementById('govText').textContent = '(Analyzing...)';
-    document.getElementById('govNote').style.display = 'none';
-
-    setAuditDefaults();
-
-    try{
-      const resp = await fetch(API_URL, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ text })
-      });
-      if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-      const data = await resp.json();
-
-      const freq = data.freq_type || 'Unknown';
-
-      // Layer 2: "Raw AI Output (Ungoverned)" — demo risk behavior
-      const rawUngoverned = generateBaseline(text, freq);
-      document.getElementById('baselineText').textContent = rawUngoverned;
-
-      document.getElementById('baselineBadge').textContent = 'RISK';
-      document.getElementById('baselineBadge').className = 'badge badge-risk';
-
-      // Decision mapping: prefer explicit decision; fallback to mode/repair_mode
-      const rawMode = (data.decision || data.mode || data.repair_mode || 'no-op');
-
-      // API output: repaired_text might be echo (== user text) or rewrite; original may be user text.
-      const apiOutput = (data.repaired_text || data.original || '').trim();
-
-      // Resolve decision with anti-confusion rule (echo != allow)
-      const decision = resolveDecision(rawMode, text, apiOutput);
-
-      // Decide what to display in Layer 3:
-      // - ALLOW: show a safe AI output (until you provide real "raw_ai_output" from API)
-      // - GUIDE: show API output if available; if empty, use echo (user text)
-      // - BLOCK: show blocked marker (optionally you can later route to a safety flow)
-      let governedOut = '';
-      if (decision === 'allow') {
-        governedOut = (data.raw_ai_output && String(data.raw_ai_output).trim()) || generateSafeAI(text, freq);
-      } else if (decision === 'guide') {
-        governedOut = apiOutput || text; // echo fallback
-      } else if (decision === 'block') {
-        governedOut = "[Blocked by Continuum]";
-      } else {
-        governedOut = apiOutput || generateSafeAI(text, freq);
-      }
-
-      document.getElementById('govText').textContent = governedOut || '(no output)';
-
-      // Decision UI
-      const ui = decisionBadgeUI(decision);
-
-      const govBadge = document.getElementById('govBadge');
-      govBadge.textContent = ui.text;
-      govBadge.className = ui.cls;
-
-      document.getElementById('govBlurb').innerHTML = ui.blurb;
-
-      // Tags
-      const dotClass = toneDotClass(freq);
-      document.getElementById('toneTag').innerHTML = `<span class="dot ${dotClass}"></span><span>tone: ${freq}</span>`;
-      document.getElementById('modeTag').textContent = `decision: ${decision}`;
-
-      const conf = (data.confidence_final !== undefined) ? data.confidence_final
-                 : (data.confidence && data.confidence.final !== undefined) ? data.confidence.final
-                 : (typeof data.confidence === 'number') ? data.confidence
-                 : null;
-
-      if (decision === 'allow') {
-        document.getElementById('confTag').textContent = 'confidence: within range';
-      } else {
-        const confPct = (conf === null) ? '-' : `${Math.round(Number(conf) * 100)}%`;
-        document.getElementById('confTag').textContent = `confidence: ${confPct}`;
-      }
-
-      // Decision log + CIP tag
-      const decisionLog = document.getElementById('decisionLog');
-      decisionLog.textContent = ui.log;
-      decisionLog.className =
-        (decision === 'allow') ? 'badge badge-safe' :
-        (decision === 'guide') ? 'badge badge-warn' :
-        (decision === 'block') ? 'badge badge-risk' : 'badge badge-info';
-
-      const cipTag = document.getElementById('cipTag');
-      cipTag.textContent = ui.cip.text;
-      cipTag.className = ui.cip.cls;
-
-      // Apply audit if present
-      applyAudit(data.audit);
-
-      // Optional note
-      const note = data.repair_note || "";
-      if (note){
-        const noteEl = document.getElementById('govNote');
-        noteEl.textContent = note;
-        noteEl.style.display = 'block';
-      }
-
-      // Optional: scenario hint
-      const scenario = data.scenario || '';
-      const baselineWhy = document.getElementById('baselineWhy');
-      if (scenario){
-        baselineWhy.innerHTML = `<span class="badge badge-warn">overreach</span><span>Common failure in <strong>${scenario}</strong>: the AI “does more” than the user allowed.</span>`;
-      } else {
-        baselineWhy.innerHTML = `<span class="badge badge-warn">overreach</span><span>Common failure: the AI “does more” than the user allowed.</span>`;
-      }
-
-    } catch(err){
-      showError(`Demo failed: ${err.message}`);
-      document.getElementById('baselineText').textContent = '(Failed)';
-      document.getElementById('govText').textContent = '(Failed)';
-      setAuditDefaults();
-    } finally{
-      btn.disabled = false;
-      btn.textContent = 'Run Demo';
-    }
-  }
-
-  document.getElementById('inputText').addEventListener('keydown', function(e){
-    if (e.key === 'Enter' && !e.shiftKey){
-      e.preventDefault();
-      analyzeText();
-    }
+  const resp = await fetch(API_URL,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({text})
   });
+  const data = await resp.json();
 
-  updateCounter();
-  setAuditDefaults();
+  document.getElementById('baselineText').textContent =
+    'Typical ungoverned AI would overreach here.';
+
+  document.getElementById('govText').textContent =
+    data.repaired_text || data.original || '';
+}
 </script>
 </body>
 </html>
