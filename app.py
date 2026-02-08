@@ -170,12 +170,11 @@ async def analyze(req: AnalyzeRequest):
     repair_note = out.get("repair_note", result.get("repair_note"))
 
     # ✅ Layer 2 truth (debug only):
-    # repairer returns "llm_raw_response" (gated by RETURN_LLM_RAW=1)
+    # raw aliases come from repairer and are already gated by RETURN_LLM_RAW=1
     raw_ai_output = (
         out.get("raw_ai_output")
         or out.get("llm_raw_output")
-        or out.get("baseline_output")
-        or out.get("llm_raw_response")  # <-- real one from repairer when enabled
+        or out.get("llm_raw_response")  # real one from repairer when enabled
         or result.get("raw_ai_output")
     )
 
