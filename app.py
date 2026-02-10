@@ -11,16 +11,14 @@ PATCH:
 - ✅ Exposes top-level compat truth: llm_used/cache_hit/model/usage/output_source
 - ✅ Handles BLOCK mode cleanly (no echo leakage; pipeline already enforces)
 - ✅ Avoids returning empty-string raw_ai_output (convert "" -> None)
-
-NEW (Governance-grade logging):
-- ✅ Logs ONLY hashes + lengths (no content ever persisted)
-- ✅ Attaches pipeline_version_fingerprint for audit reproducibility
+- ✅ Writes enterprise-safe audit log per request (hash+len only; no content)
 """
 
 import os
 import time
 import math
 import logging
+import hashlib
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
@@ -68,6 +66,10 @@ def _none_if_empty(s: Optional[str]) -> Optional[str]:
     return s
 
 
+def _sha256_hex(s: str) -> str:
+    return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
+
+
 # -------------------- Lifespan (HF-safe) --------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -76,7 +78,6 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Continuum API (HF Space)")
 
     pipeline = Z1Pipeline(debug=False)
-
     data_logger = DataLogger(log_dir="logs")
 
     token = os.environ.get("GITHUB_TOKEN")
@@ -227,20 +228,65 @@ async def analyze(req: AnalyzeRequest):
     # ✅ Metrics: pipeline truth
     metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else None
 
-    # ✅ Governance logging (hash + length only; never content)
+    # -------------------- Enterprise-safe log (NO CONTENT) --------------------
+    # We log only fingerprints + decision evidence, never raw text.
     if data_logger:
         try:
-            data_logger.log_analysis(
-                input_text=req.text,
-                output_result=result,
-                metadata={
-                    "endpoint": "/api/v1/analyze",
-                    "server_time_utc": _utc_now(),
+            inp_fp = _sha256_hex(req.text)
+            out_text = repaired_text if isinstance(repaired_text, str) else ("" if repaired_text is None else str(repaired_text))
+            out_fp = _sha256_hex(out_text)
+
+            evidence = {
+                # fingerprints
+                "input_fp_sha256": inp_fp,
+                "input_length": len(req.text or ""),
+                "output_fp_sha256": out_fp,
+                "output_length": len(out_text or ""),
+
+                # decision truth
+                "freq_type": freq_type,
+                "mode": mode,
+                "scenario": scenario,
+                "confidence": {
+                    "final": confidence_final,
+                    "classifier": confidence_classifier,
                 },
+
+                # governance truth
+                "metrics": metrics or {},
+
+                # audit truth (already content-free)
+                "audit": audit_top,
+
+                # compat fields (truth)
+                "llm_used": llm_used,
+                "cache_hit": cache_hit,
+                "model": model_name,
+                "usage": usage,
+                "output_source": output_source,
+
+                # versioning
+                "api_version": app.version,
+                "pipeline_fingerprint": result.get("pipeline_fingerprint", ""),
+            }
+
+            meta = {
+                "runtime": {
+                    "platform": "hf_space",
+                },
+            }
+
+            log_res = data_logger.log_analysis(
+                input_text=req.text,        # logger will fingerprint again; kept for API compatibility
+                output_result=evidence,     # already safe
+                metadata=meta
             )
+            # attach log_id into audit so you can do feedback later
+            if isinstance(log_res, dict) and log_res.get("timestamp"):
+                audit["log_id"] = log_res["timestamp"]
         except Exception as e:
-            # Never break API
-            logger.warning(f"Logger failed (safe): {e}")
+            # never break API
+            logger.warning(f"Logging skipped: {e}")
 
     return AnalyzeResponse(
         original=original,
