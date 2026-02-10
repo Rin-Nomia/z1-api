@@ -17,6 +17,11 @@ PRIVACY / GOVERNANCE GUARANTEE (重要):
 - ✅ NO RAW TEXT is written to disk or GitHub.
 - ✅ Only SHA256 fingerprints + lengths + decision evidence are logged.
 - ✅ Optional salt supported via LOG_SALT (recommended for enterprise).
+
+Compatibility:
+- log_analysis(input_text=...) accepts str OR None.
+- If input_text is provided, it is never stored; only fingerprint+len computed.
+- Defense-in-depth: scrub risky keys inside output_result before writing.
 """
 
 from __future__ import annotations
@@ -31,6 +36,9 @@ from typing import Any, Dict, Optional
 import requests
 
 
+# ----------------------------
+# Time helpers
+# ----------------------------
 def _utc_dates():
     now = datetime.utcnow()
     return (
@@ -44,6 +52,9 @@ def _utc_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
+# ----------------------------
+# Fingerprint helpers
+# ----------------------------
 def _get_salt() -> str:
     # Optional: enterprise-friendly. If set, fingerprints are not reversible / correlatable across repos.
     return os.environ.get("LOG_SALT", "").strip()
@@ -61,6 +72,48 @@ def _safe_int(v: Any, default: int = 0) -> int:
         return int(default)
 
 
+def _safe_str(v: Any, default: str = "") -> str:
+    try:
+        if v is None:
+            return default
+        return str(v)
+    except Exception:
+        return default
+
+
+# ----------------------------
+# Safety scrub (defense-in-depth)
+# ----------------------------
+_RISKY_TEXT_KEYS = {
+    # common raw text keys
+    "text", "input_text", "original", "normalized", "repaired_text",
+    # raw model output keys
+    "raw_ai_output", "llm_raw_response", "llm_raw_output",
+    # sometimes nested payloads use these
+    "prompt", "messages", "completion", "response_text",
+}
+
+def _scrub_dict_content_free(obj: Any) -> Any:
+    """
+    Remove obvious raw-text fields recursively.
+    This is not a perfect PII scrubber; it's a hard rule enforcement:
+    We do not store known raw-text keys.
+    """
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if k in _RISKY_TEXT_KEYS:
+                continue
+            out[k] = _scrub_dict_content_free(v)
+        return out
+    if isinstance(obj, list):
+        return [_scrub_dict_content_free(x) for x in obj]
+    return obj
+
+
+# ----------------------------
+# GitHub writer
+# ----------------------------
 class GitHubWriter:
     """
     Minimal GitHub Contents API writer.
@@ -110,6 +163,9 @@ class GitHubWriter:
         return self._put_file(path, event)
 
 
+# ----------------------------
+# DataLogger
+# ----------------------------
 class DataLogger:
     """
     API-facing logger used by app.py.
@@ -144,7 +200,7 @@ class DataLogger:
 
     def log_analysis(
         self,
-        input_text: str,
+        input_text: Optional[str],
         output_result: Dict[str, Any],
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -153,22 +209,31 @@ class DataLogger:
         Returns {"timestamp": <log_id>, "created_at": <utc>}.
 
         IMPORTANT:
-        - input_text is accepted for compatibility but NOT stored.
-        - fingerprints are computed and stored instead.
+        - input_text can be None. If None, we only trust fingerprints provided by output_result.
+        - If input_text is provided, it is NEVER stored; only fingerprint+len computed.
         """
+
         ts = _utc_iso()
         event_id = self._new_id("a")
 
-        in_len = len(input_text or "")
-        in_fp = _sha256_hex(input_text or "", salt=self._salt)
+        # If app.py passes None (recommended), we do NOT compute from raw text.
+        if input_text is None:
+            in_len = None
+            in_fp = None
+            # Try to use evidence fingerprints if app already computed them.
+            # (Still scrubbed below; these keys are not raw text.)
+            try:
+                in_fp = output_result.get("input_fp_sha256") if isinstance(output_result, dict) else None
+                in_len = output_result.get("input_length") if isinstance(output_result, dict) else None
+            except Exception:
+                in_fp, in_len = None, None
+        else:
+            in_len = len(input_text or "")
+            in_fp = _sha256_hex(input_text or "", salt=self._salt)
 
         # output_result should already be content-free (recommended),
-        # but we still enforce a safety scrub for known risky keys.
-        safe_result = dict(output_result or {})
-        # hard-delete any accidental raw text keys (defense-in-depth)
-        for k in ["text", "input_text", "original", "normalized", "repaired_text", "raw_ai_output", "llm_raw_response", "llm_raw_output"]:
-            if k in safe_result:
-                safe_result.pop(k, None)
+        # but we still enforce a safety scrub for known risky keys (defense-in-depth).
+        safe_result = _scrub_dict_content_free(dict(output_result or {}))
 
         payload = {
             "id": event_id,
@@ -177,9 +242,10 @@ class DataLogger:
 
             # content-free identifiers
             "input": {
-                "fp_sha256": in_fp,
-                "length": in_len,
+                "fp_sha256": _safe_str(in_fp, ""),
+                "length": _safe_int(in_len, 0) if in_len is not None else None,
                 "fingerprint_salted": bool(self._salt),
+                "input_text_provided": input_text is not None,  # transparency for audit
             },
 
             # decision evidence (must be content-free)
@@ -210,7 +276,7 @@ class DataLogger:
             "id": event_id,
             "timestamp": ts,
             "type": "feedback",
-            "target_log_id": log_id,
+            "target_log_id": _safe_str(log_id, ""),
             "feedback": {
                 "accuracy": _safe_int(accuracy, 0),
                 "helpful": _safe_int(helpful, 0),
@@ -243,6 +309,9 @@ class DataLogger:
         }
 
 
+# ----------------------------
+# GitHubBackup (safe no-op)
+# ----------------------------
 class GitHubBackup:
     """
     Compatibility class: app.py calls GitHubBackup(...).restore()
