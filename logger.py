@@ -1,3 +1,4 @@
+# logger.py
 """
 logger.py
 Continuum Logger (HF Space friendly)
@@ -6,27 +7,23 @@ Provides:
 - DataLogger: log_analysis / log_feedback / get_stats
 - GitHubBackup: optional restore hook (safe no-op by default)
 
-Design goals:
-- Never break the API if logging fails
-- Avoid GitHub SHA race conditions by writing ONE FILE PER EVENT
-- Works in Hugging Face Spaces using Secrets:
-    GITHUB_TOKEN = GitHub Fine-grained PAT (Contents: Read & Write)
-    GITHUB_REPO  = "owner/repo" (e.g., "Rin-Nomia/continuum-logs")
-
-Optional env flags:
-- GITHUB_BRANCH: branch to write to (default: "main")
-- LOG_STORE_TEXT: "1" to store raw input text in logs (default: off, store hash only)
+GOVERNANCE PURITY POLICY (Upgraded):
+- ✅ Store ONLY hash + length for any text.
+- ✅ Do NOT store original text / repaired text / raw LLM output.
+- ✅ Add verifiable output fingerprints to validate decision correctness WITHOUT content.
+    - input_fingerprint: sha256 + length (raw request input)
+    - normalized_fingerprint: sha256 + length (post-normalize & truncate, pipeline truth)
+    - output_fingerprint: sha256 + length (governed output / repaired_text)
 """
 
 from __future__ import annotations
 
 import json
 import os
-import time
 import uuid
 import hashlib
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import requests
 
@@ -40,16 +37,124 @@ def _utc_dates():
     )
 
 
-def _iso_utc_z() -> str:
-    return datetime.utcnow().isoformat() + "Z"
+def _sha256_text(s: str) -> str:
+    s = s if isinstance(s, str) else str(s or "")
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def _store_text_enabled() -> bool:
-    return os.environ.get("LOG_STORE_TEXT", "").strip() == "1"
+def _fingerprint_text(s: Any) -> Dict[str, Any]:
+    s2 = s if isinstance(s, str) else str(s or "")
+    return {"sha256": _sha256_text(s2), "length": len(s2)}
 
 
-def _sha256(s: str) -> str:
-    return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
+def _strip_content_fields(obj: Any) -> Any:
+    """
+    Defense-in-depth: remove any obvious content-bearing fields if they leak into result.
+    We keep audit/metrics truth and fingerprints, but never raw text.
+    """
+    if isinstance(obj, dict):
+        cleaned = {}
+        for k, v in obj.items():
+            lk = str(k).lower()
+
+            # drop raw content fields (common names)
+            if lk in {
+                "text", "original", "normalized", "repaired_text", "repair_note",
+                "raw_ai_output", "llm_raw_output", "llm_raw_response", "prompt",
+                "messages", "content"
+            }:
+                continue
+
+            cleaned[k] = _strip_content_fields(v)
+        return cleaned
+
+    if isinstance(obj, list):
+        return [_strip_content_fields(x) for x in obj]
+
+    return obj
+
+
+def _output_kind(freq_type: str, mode: str, scenario: str = "") -> str:
+    """
+    One-word governance classification for quick scanning.
+    """
+    ft = (freq_type or "").strip()
+    md = (mode or "").strip().lower()
+    sc = (scenario or "").strip().lower()
+
+    if ft == "OutOfScope" or md == "block" or "crisis" in sc or "out_of_scope" in sc:
+        return "block"
+    if md == "no-op":
+        return "pass"
+    if md == "repair":
+        return "rewrite"
+    if md == "suggest":
+        return "guide"
+    return "unknown"
+
+
+def _extract_governance_truth_with_fingerprints(pipeline_result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Keep only the minimum set to prove the decision was correct.
+    Upgraded: include normalized/output fingerprints (hash+len).
+    """
+    if not isinstance(pipeline_result, dict):
+        return {"error": True, "reason": "invalid_pipeline_result"}
+
+    out = pipeline_result.get("output") if isinstance(pipeline_result.get("output"), dict) else {}
+    conf = pipeline_result.get("confidence") if isinstance(pipeline_result.get("confidence"), dict) else {}
+    audit = pipeline_result.get("audit") if isinstance(pipeline_result.get("audit"), dict) else {}
+    metrics = pipeline_result.get("metrics") if isinstance(pipeline_result.get("metrics"), dict) else None
+
+    # ---- Fingerprints (NO CONTENT STORED) ----
+    normalized_text = pipeline_result.get("normalized", "")
+    governed_text = out.get("repaired_text", pipeline_result.get("repaired_text", ""))
+
+    # Ensure block doesn't accidentally fingerprint input (pipeline should already set to "")
+    mode = pipeline_result.get("mode", "no-op")
+    freq_type = pipeline_result.get("freq_type", "Unknown")
+    scenario = out.get("scenario", pipeline_result.get("scenario", "unknown"))
+
+    # If block, governed_text should be "", but keep guardrail:
+    if (str(mode).lower() == "block") or (freq_type == "OutOfScope"):
+        governed_text = "" if governed_text is None else str(governed_text or "")
+
+    truth = {
+        "freq_type": freq_type,
+        "mode": mode,
+        "scenario": scenario,
+
+        "output_kind": _output_kind(freq_type, mode, scenario),
+
+        "confidence": {
+            "final": conf.get("final", pipeline_result.get("confidence_final", 0.0)),
+            "classifier": conf.get("classifier", pipeline_result.get("confidence_classifier", None)),
+            "base": conf.get("base", None),
+        },
+
+        # ✅ fingerprints that let you validate correctness without content
+        "fingerprints": {
+            "normalized": _fingerprint_text(normalized_text),
+            "output": _fingerprint_text(governed_text),
+        },
+
+        # top-level compat truth (source of truth from pipeline)
+        "llm_used": pipeline_result.get("llm_used", out.get("llm_used", None)),
+        "cache_hit": pipeline_result.get("cache_hit", out.get("cache_hit", None)),
+        "model": pipeline_result.get("model", out.get("model", "")),
+        "usage": pipeline_result.get("usage", out.get("usage", {})),
+        "output_source": pipeline_result.get("output_source", out.get("output_source", None)),
+
+        "processing_time_ms": pipeline_result.get("processing_time_ms", None),
+
+        # audit + metrics are allowed (but cleaned)
+        "audit": audit,
+        "metrics": metrics,
+    }
+
+    # Clean any accidental content fields (defense-in-depth)
+    truth = _strip_content_fields(truth)
+    return truth
 
 
 class GitHubWriter:
@@ -61,75 +166,38 @@ class GitHubWriter:
     def __init__(self):
         self.github_token = os.environ.get("GITHUB_TOKEN")
         self.github_repo = os.environ.get("GITHUB_REPO")  # owner/repo
-        self.github_branch = os.environ.get("GITHUB_BRANCH", "main").strip() or "main"
 
         self.enabled = bool(self.github_token and self.github_repo)
 
-        # Use stable headers to reduce GitHub API quirks
         self.headers = {
             "Accept": "application/vnd.github+json",
             "User-Agent": "continuum-api-logger",
-            "X-GitHub-Api-Version": "2022-11-28",
         }
         if self.github_token:
-            # Fine-grained PAT compatible
             self.headers["Authorization"] = f"Bearer {self.github_token}"
 
-    def _put_file(self, path: str, payload: Dict[str, Any]) -> Tuple[bool, str]:
-        """
-        Create/overwrite a single file via PUT.
-        Returns (ok, reason_code).
-        """
+    def _put_file(self, path: str, payload: Dict[str, Any]) -> bool:
         if not self.enabled:
-            return False, "disabled"
+            return False
 
         url = f"https://api.github.com/repos/{self.github_repo}/contents/{path}"
 
         content_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         b64 = __import__("base64").b64encode(content_bytes).decode("utf-8")
 
-        data = {
-            "message": f"Add log {payload.get('id', '')}".strip(),
-            "content": b64,
-            "branch": self.github_branch,
-        }
+        data = {"message": f"Add log {payload.get('id', '')}".strip(), "content": b64}
 
-        # small retry for transient errors (HF ↔ GitHub network / 429 / 5xx)
-        retries = 2
-        backoffs = [0.5, 1.0]
+        try:
+            r = requests.put(url, headers=self.headers, json=data, timeout=15)
+            if r.status_code in (200, 201):
+                return True
+            print(f"[GitHubWriter] PUT failed {r.status_code}: {r.text[:200]}")
+            return False
+        except Exception as e:
+            print(f"[GitHubWriter] PUT exception: {e}")
+            return False
 
-        for attempt in range(retries + 1):
-            try:
-                r = requests.put(url, headers=self.headers, json=data, timeout=15)
-
-                if r.status_code in (200, 201):
-                    return True, "ok"
-
-                # Retry only on rate limit / server issues
-                if r.status_code in (429, 500, 502, 503, 504) and attempt < retries:
-                    time.sleep(backoffs[attempt] if attempt < len(backoffs) else 1.0)
-                    continue
-
-                # Non-retryable failure
-                # Keep message short (do not break API)
-                short = (r.text or "")[:200]
-                print(f"[GitHubWriter] PUT failed {r.status_code}: {short}")
-                return False, f"http_{r.status_code}"
-
-            except Exception as e:
-                print(f"[GitHubWriter] PUT exception: {e}")
-                if attempt < retries:
-                    time.sleep(backoffs[attempt] if attempt < len(backoffs) else 1.0)
-                    continue
-                return False, "exception"
-
-        return False, "unknown"
-
-    def write_event(self, category: str, event: Dict[str, Any], event_id: str) -> Tuple[bool, str]:
-        """
-        Write event as a unique file:
-          logs/<YYYY-MM>/<YYYYMMDD>/<category>/<event_id>.json
-        """
+    def write_event(self, category: str, event: Dict[str, Any], event_id: str) -> bool:
         year_month, date_str, _ = _utc_dates()
         path = f"logs/{year_month}/{date_str}/{category}/{event_id}.json"
         return self._put_file(path, event)
@@ -149,88 +217,55 @@ class DataLogger:
         self.log_dir = log_dir
         self.writer = GitHubWriter()
 
-        # in-memory counters (safe minimal stats; persists only within runtime)
         self._analysis_count = 0
         self._feedback_count = 0
         self._last_analysis_ts: Optional[str] = None
 
         if self.writer.enabled:
-            print(f"[DataLogger] GitHub logging enabled -> {os.environ.get('GITHUB_REPO')} ({self.writer.github_branch})")
+            print(f"[DataLogger] GitHub logging enabled -> {os.environ.get('GITHUB_REPO')}")
         else:
             print("[DataLogger] GitHub credentials not set; logging will be local-only (in-memory stats).")
 
     @staticmethod
     def _new_id(prefix: str) -> str:
-        # short, URL-safe
         return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
-    def log_analysis(
-        self,
-        input_text: str,
-        output_result: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    def log_analysis(self, input_text: str, output_result: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Create a new analysis log event and (optionally) ship to GitHub.
-
-        Returns:
-          - log_id: event_id (stable identifier)
-          - created_at: UTC timestamp
-          - github_write: ok/failed/disabled
-          - github_error: reason code (if failed)
+        Governance log event (Upgraded):
+        - input: sha256 + length only
+        - result: decision truth + normalized/output fingerprints (hash+len), no content
         """
-        ts = _iso_utc_z()
+        ts = datetime.utcnow().isoformat() + "Z"
         event_id = self._new_id("a")
-
-        # privacy-safe default: do not store raw text unless enabled
-        if _store_text_enabled():
-            input_obj = {
-                "text": input_text,
-                "text_length": len(input_text or ""),
-                "text_hash": _sha256(input_text or ""),
-            }
-        else:
-            input_obj = {
-                "text": None,
-                "text_length": len(input_text or ""),
-                "text_hash": _sha256(input_text or ""),
-            }
 
         payload = {
             "id": event_id,
             "timestamp": ts,
             "type": "analysis",
-            "input": input_obj,
-            "result": output_result,
-            "metadata": metadata or {},
-            "runtime": {
-                "source": "hf_space",
-                "service": "continuum-api",
-                "service_version": os.environ.get("SERVICE_VERSION", ""),
-            },
+
+            # ✅ governance purity: no text
+            "input": _fingerprint_text(input_text),
+
+            # ✅ decision truth + fingerprints only
+            "result": _extract_governance_truth_with_fingerprints(output_result),
+
+            "metadata": _strip_content_fields(metadata or {}),
+            "runtime": {"source": "hf_space"},
         }
 
-        # Update minimal stats
         self._analysis_count += 1
         self._last_analysis_ts = ts
 
-        github_write = "disabled"
-        github_error = None
-
         if self.writer.enabled:
-            ok, reason = self.writer.write_event(category="analysis", event=payload, event_id=event_id)
-            github_write = "ok" if ok else "failed"
-            github_error = None if ok else reason
+            ok = self.writer.write_event(category="analysis", event=payload, event_id=event_id)
+            if not ok:
+                payload["github_write"] = "failed"
 
-        return {
-            "log_id": event_id,
-            "created_at": ts,
-            "github_write": github_write,
-            "github_error": github_error,
-        }
+        return {"timestamp": event_id, "created_at": ts}
 
     def log_feedback(self, log_id: str, accuracy: int, helpful: int, accepted: bool) -> Dict[str, Any]:
-        ts = _iso_utc_z()
+        ts = datetime.utcnow().isoformat() + "Z"
         event_id = self._new_id("f")
 
         payload = {
@@ -239,46 +274,26 @@ class DataLogger:
             "type": "feedback",
             "target_log_id": log_id,
             "feedback": {
-                "accuracy": accuracy,
-                "helpful": helpful,
-                "accepted": accepted,
-            },
-            "runtime": {
-                "source": "hf_space",
-                "service": "continuum-api",
-                "service_version": os.environ.get("SERVICE_VERSION", ""),
+                "accuracy": int(accuracy),
+                "helpful": int(helpful),
+                "accepted": bool(accepted),
             },
         }
 
         self._feedback_count += 1
 
-        github_write = "disabled"
-        github_error = None
-
         if self.writer.enabled:
-            ok, reason = self.writer.write_event(category="feedback", event=payload, event_id=event_id)
-            github_write = "ok" if ok else "failed"
-            github_error = None if ok else reason
+            ok = self.writer.write_event(category="feedback", event=payload, event_id=event_id)
+            if not ok:
+                payload["github_write"] = "failed"
 
-        return {
-            "status": "ok",
-            "feedback_id": event_id,
-            "created_at": ts,
-            "github_write": github_write,
-            "github_error": github_error,
-        }
+        return {"status": "ok", "feedback_id": event_id, "created_at": ts}
 
     def get_stats(self) -> Dict[str, Any]:
-        """
-        Minimal stats that never break.
-        If you later want 'real stats from GitHub logs', we can add a separate scheduled job.
-        """
         return {
             "logger": {
                 "enabled": self.writer.enabled,
                 "repo": os.environ.get("GITHUB_REPO") if self.writer.enabled else None,
-                "branch": self.writer.github_branch if self.writer.enabled else None,
-                "store_text": _store_text_enabled(),
             },
             "counts": {
                 "analyses_in_runtime": self._analysis_count,
@@ -298,6 +313,5 @@ class GitHubBackup:
         self.log_dir = log_dir
 
     def restore(self) -> None:
-        # Safe no-op: do not break startup
         print("[GitHubBackup] restore() skipped (no-op)")
         return
