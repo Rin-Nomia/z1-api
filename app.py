@@ -12,6 +12,9 @@ PATCH:
 - ✅ Handles BLOCK mode cleanly (no echo leakage; pipeline already enforces)
 - ✅ Avoids returning empty-string raw_ai_output (convert "" -> None)
 - ✅ Writes enterprise-safe audit log per request (hash+len only; no content)
+- ✅ Never passes raw input text into logger (purity)
+- ✅ Fix fingerprint field name: pipeline_version_fingerprint
+- ✅ Do not overwrite pipeline timing_ms.total; only add server_overhead
 """
 
 import os
@@ -44,7 +47,7 @@ data_logger: Optional[DataLogger] = None
 github_backup: Optional[GitHubBackup] = None
 
 
-def _utc_now():
+def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -68,6 +71,12 @@ def _none_if_empty(s: Optional[str]) -> Optional[str]:
 
 def _sha256_hex(s: str) -> str:
     return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
+
+
+def _bool_or_none(v) -> Optional[bool]:
+    if isinstance(v, bool):
+        return v
+    return None
 
 
 # -------------------- Lifespan (HF-safe) --------------------
@@ -113,7 +122,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # -------------------- Models --------------------
 class AnalyzeRequest(BaseModel):
@@ -180,21 +188,26 @@ async def analyze(req: AnalyzeRequest):
     if result.get("error"):
         raise HTTPException(400, result.get("reason", "pipeline_error"))
 
-    # Core fields (pipeline truth)
+    # -------------------- Core truth --------------------
     original = result.get("original", req.text)
     freq_type = result.get("freq_type", "Unknown")
     mode = (result.get("mode") or "no-op").lower()
 
-    # Confidence fields (pipeline truth)
+    # Confidence (truth)
     conf_obj = result.get("confidence") or {}
     confidence_final = _safe_conf(conf_obj.get("final", result.get("confidence_final", 0.0)))
     confidence_classifier = _safe_conf(conf_obj.get("classifier", result.get("confidence_classifier", 0.0)))
 
-    # Output fields (truth)
+    # Output (truth)
     out = result.get("output") or {}
     scenario = out.get("scenario", result.get("scenario", "unknown"))
+
     repaired_text = out.get("repaired_text", result.get("repaired_text"))
     repair_note = out.get("repair_note", result.get("repair_note"))
+
+    # Ensure BLOCK stays explicit (""), not None
+    if repaired_text is None and mode == "block":
+        repaired_text = ""
 
     # ✅ Layer 2 truth (debug only; already gated in repairer)
     raw_ai_output = (
@@ -205,34 +218,42 @@ async def analyze(req: AnalyzeRequest):
     )
     raw_ai_output = _none_if_empty(raw_ai_output)
 
-    # ✅ Top-level compat truth (do not guess)
-    llm_used = result.get("llm_used", None)
-    cache_hit = result.get("cache_hit", None)
+    # ✅ Top-level compat truth (do not guess; only type-normalize)
+    llm_used = _bool_or_none(result.get("llm_used", None))
+    cache_hit = _bool_or_none(result.get("cache_hit", None))
     model_name = result.get("model", "") or ""
     usage = result.get("usage", {}) if isinstance(result.get("usage", {}), dict) else {}
     output_source = result.get("output_source", None)
 
-    # ✅ Audit: pass-through pipeline truth, add server overhead timing
+    # ✅ Audit: pass-through pipeline truth, add server overhead timing without overwriting totals
     audit_top = result.get("audit") if isinstance(result.get("audit"), dict) else {}
     audit = dict(audit_top)
 
-    audit.setdefault("timing_ms", {})
     if not isinstance(audit.get("timing_ms"), dict):
         audit["timing_ms"] = {}
 
     server_overhead = int((time.time() - t0) * 1000)
-    audit["timing_ms"].setdefault("total", server_overhead)
+
+    # never overwrite pipeline/repairer total; only add overhead field
     audit["timing_ms"]["server_overhead"] = server_overhead
     audit["server_time_utc"] = _utc_now()
 
     # ✅ Metrics: pipeline truth
     metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else None
 
+    # ✅ Fingerprint (truth)
+    pipeline_fp = (
+        result.get("pipeline_version_fingerprint")
+        or result.get("pipeline_fingerprint")
+        or ""
+    )
+
     # -------------------- Enterprise-safe log (NO CONTENT) --------------------
     # We log only fingerprints + decision evidence, never raw text.
     if data_logger:
         try:
             inp_fp = _sha256_hex(req.text)
+
             out_text = repaired_text if isinstance(repaired_text, str) else ("" if repaired_text is None else str(repaired_text))
             out_fp = _sha256_hex(out_text)
 
@@ -255,7 +276,7 @@ async def analyze(req: AnalyzeRequest):
                 # governance truth
                 "metrics": metrics or {},
 
-                # audit truth (already content-free)
+                # audit truth (content-free)
                 "audit": audit_top,
 
                 # compat fields (truth)
@@ -267,23 +288,24 @@ async def analyze(req: AnalyzeRequest):
 
                 # versioning
                 "api_version": app.version,
-                "pipeline_fingerprint": result.get("pipeline_fingerprint", ""),
+                "pipeline_version_fingerprint": pipeline_fp,
             }
 
             meta = {
-                "runtime": {
-                    "platform": "hf_space",
-                },
+                "runtime": {"platform": "hf_space"},
             }
 
+            # IMPORTANT: do NOT pass raw input into logger
             log_res = data_logger.log_analysis(
-                input_text=req.text,        # logger will fingerprint again; kept for API compatibility
+                input_text=None,            # logger must support None (we'll fix in logger.py next)
                 output_result=evidence,     # already safe
                 metadata=meta
             )
-            # attach log_id into audit so you can do feedback later
+
+            # attach log_id into audit for feedback/tracing
             if isinstance(log_res, dict) and log_res.get("timestamp"):
                 audit["log_id"] = log_res["timestamp"]
+
         except Exception as e:
             # never break API
             logger.warning(f"Logging skipped: {e}")
