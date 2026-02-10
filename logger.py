@@ -15,6 +15,7 @@ Design goals:
 
 PRIVACY / GOVERNANCE GUARANTEE (重要):
 - ✅ NO RAW TEXT is written to disk or GitHub.
+- ✅ NO content-derived fragments are stored (matched keywords / oos matches / triggers).
 - ✅ Only SHA256 fingerprints + lengths + decision evidence are logged.
 - ✅ Optional salt supported via LOG_SALT (recommended for enterprise).
 
@@ -24,7 +25,7 @@ Compatibility:
 - Defense-in-depth: scrub risky keys inside output_result before writing.
 
 PATCH (enterprise-hardening):
-- ✅ Stronger scrub: remove derived-content lists (matched keywords, oos matches, triggers)
+- ✅ Stronger scrub: key normalization (case/variant safe)
 - ✅ Safe-by-default: drop any huge list/dict under suspicious keys
 - ✅ Keep schema stable for app.py (no breaking changes)
 """
@@ -92,17 +93,14 @@ def _safe_str(v: Any, default: str = "") -> str:
 # ----------------------------
 # 1) Hard-drop obvious raw text fields (direct content)
 _RISKY_TEXT_KEYS = {
-    # common raw text keys
     "text",
     "input_text",
     "original",
     "normalized",
     "repaired_text",
-    # raw model output keys
     "raw_ai_output",
     "llm_raw_response",
     "llm_raw_output",
-    # prompt / message bundles
     "prompt",
     "messages",
     "completion",
@@ -110,9 +108,7 @@ _RISKY_TEXT_KEYS = {
 }
 
 # 2) Hard-drop derived-content fields (lists that leak content patterns)
-# These are not "raw text", but they can contain fragments / keywords that reconstruct user content.
 _RISKY_DERIVED_KEYS = {
-    # OOS / safety gate matches
     "oos_matched",
     "matched",
     "matched_keywords",
@@ -133,18 +129,24 @@ _RISKY_DERIVED_KEYS = {
     "pattern_hits",
 }
 
-# 3) Size guards: if an unexpected key contains very large structures, drop it.
-# (Enterprise logs should be stable, small, and non-sensitive.)
+# 3) Size guards
 _MAX_LIST_LEN = 80
 _MAX_STR_LEN = 600
 _MAX_DICT_KEYS = 120
+
+
+def _k_norm(key: Any) -> str:
+    """Normalize key for comparisons (case/variant safe)."""
+    try:
+        return str(key).strip().lower()
+    except Exception:
+        return ""
 
 
 def _looks_like_sensitive_key(key: str) -> bool:
     k = (key or "").strip().lower()
     if not k:
         return False
-    # broad heuristics: these keys tend to contain content or near-content
     signals = [
         "text", "content", "message", "prompt", "completion", "response",
         "utterance", "transcript", "input", "output",
@@ -159,14 +161,13 @@ def _scrub_value_if_too_large(key: str, value: Any) -> Optional[Any]:
       - None means "drop this field"
       - otherwise returns the (possibly trimmed) value
     """
-    # Strings: keep only short strings; long strings can be content
+    # Strings
     if isinstance(value, str):
         if len(value) > _MAX_STR_LEN and _looks_like_sensitive_key(key):
             return None
-        # keep as-is (short)
         return value
 
-    # Lists: drop long lists if key is sensitive; else trim conservatively
+    # Lists
     if isinstance(value, list):
         if len(value) > _MAX_LIST_LEN and _looks_like_sensitive_key(key):
             return None
@@ -174,12 +175,11 @@ def _scrub_value_if_too_large(key: str, value: Any) -> Optional[Any]:
             return value[:_MAX_LIST_LEN]
         return value
 
-    # Dicts: drop giant dicts under sensitive keys; else allow but cap keys
+    # Dicts
     if isinstance(value, dict):
         if len(value.keys()) > _MAX_DICT_KEYS and _looks_like_sensitive_key(key):
             return None
         if len(value.keys()) > _MAX_DICT_KEYS:
-            # keep deterministic subset by sorted keys
             keys = sorted(list(value.keys()))[:_MAX_DICT_KEYS]
             return {k: value[k] for k in keys}
         return value
@@ -190,35 +190,36 @@ def _scrub_value_if_too_large(key: str, value: Any) -> Optional[Any]:
 def _scrub_dict_content_free(obj: Any) -> Any:
     """
     Remove raw-text fields + derived-content fields recursively.
-    This is not a perfect PII scrubber; it's a hard rule enforcement:
-    - We do not store known raw-text keys.
-    - We do not store known derived-content/match lists.
-    - We drop suspicious oversized content-like structures.
+    Hard rules:
+    - Never store known raw-text keys.
+    - Never store known derived-content/match lists.
+    - Drop suspicious oversized structures under sensitive keys.
     """
     if isinstance(obj, dict):
         out: Dict[str, Any] = {}
         for k, v in obj.items():
-            # hard-drop
-            if k in _RISKY_TEXT_KEYS:
+            kn = _k_norm(k)
+
+            # hard-drop (case/variant safe)
+            if kn in _RISKY_TEXT_KEYS:
                 continue
-            if k in _RISKY_DERIVED_KEYS:
+            if kn in _RISKY_DERIVED_KEYS:
                 continue
 
             # scrub recursively first
             scrubbed = _scrub_dict_content_free(v)
 
             # enforce size guards / sensitive heuristics
-            guarded = _scrub_value_if_too_large(k, scrubbed)
+            guarded = _scrub_value_if_too_large(kn, scrubbed)
             if guarded is None:
                 continue
 
-            out[k] = guarded
+            # keep original key as-is (schema stability)
+            out[str(k)] = guarded
         return out
 
     if isinstance(obj, list):
-        # scrub list items first
         cleaned = [_scrub_dict_content_free(x) for x in obj]
-        # if list is huge and items might be sensitive, cap
         if len(cleaned) > _MAX_LIST_LEN:
             cleaned = cleaned[:_MAX_LIST_LEN]
         return cleaned
@@ -238,6 +239,7 @@ class GitHubWriter:
     def __init__(self):
         self.github_token = os.environ.get("GITHUB_TOKEN")
         self.github_repo = os.environ.get("GITHUB_REPO")  # owner/repo
+        self.github_ref = os.environ.get("GITHUB_REF", "").strip()  # optional branch/ref
 
         self.enabled = bool(self.github_token and self.github_repo)
 
@@ -246,7 +248,6 @@ class GitHubWriter:
             "User-Agent": "continuum-api-logger",
         }
         if self.github_token:
-            # Fine-grained PAT works with Bearer
             self.headers["Authorization"] = f"Bearer {self.github_token}"
 
     def _put_file(self, path: str, payload: Dict[str, Any]) -> bool:
@@ -254,6 +255,9 @@ class GitHubWriter:
             return False
 
         url = f"https://api.github.com/repos/{self.github_repo}/contents/{path}"
+        if self.github_ref:
+            # GitHub Contents API supports ?ref=branch
+            url = url + f"?ref={self.github_ref}"
 
         content_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         b64 = base64.b64encode(content_bytes).decode("utf-8")
@@ -267,7 +271,9 @@ class GitHubWriter:
             r = requests.put(url, headers=self.headers, json=data, timeout=15)
             if r.status_code in (200, 201):
                 return True
-            print(f"[GitHubWriter] PUT failed {r.status_code}: {r.text[:200]}")
+            # keep error output small (avoid leaking anything)
+            txt = (r.text or "")[:120]
+            print(f"[GitHubWriter] PUT failed {r.status_code}: {txt}")
             return False
         except Exception as e:
             print(f"[GitHubWriter] PUT exception: {e}")
@@ -320,14 +326,6 @@ class DataLogger:
         output_result: Dict[str, Any],
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """
-        Create a new analysis log event and (optionally) ship to GitHub.
-        Returns {"timestamp": <log_id>, "created_at": <utc>}.
-
-        IMPORTANT:
-        - input_text can be None. If None, we only trust fingerprints provided by output_result.
-        - If input_text is provided, it is NEVER stored; only fingerprint+len computed.
-        """
         ts = _utc_iso()
         event_id = self._new_id("a")
 
@@ -335,7 +333,6 @@ class DataLogger:
         if input_text is None:
             in_len = None
             in_fp = None
-            # Try to use evidence fingerprints if app already computed them.
             try:
                 if isinstance(output_result, dict):
                     in_fp = output_result.get("input_fp_sha256")
@@ -348,24 +345,20 @@ class DataLogger:
 
         # output_result should already be content-free (recommended),
         # but we still enforce a safety scrub for risky keys (defense-in-depth).
-        safe_result = _scrub_dict_content_free(dict(output_result or {}))
+        base_obj: Dict[str, Any] = output_result if isinstance(output_result, dict) else {}
+        safe_result = _scrub_dict_content_free(dict(base_obj))
 
         payload: Dict[str, Any] = {
             "id": event_id,
             "timestamp": ts,
             "type": "analysis",
-
-            # content-free identifiers
             "input": {
                 "fp_sha256": _safe_str(in_fp, ""),
                 "length": _safe_int(in_len, 0) if in_len is not None else None,
                 "fingerprint_salted": bool(self._salt),
-                "input_text_provided": input_text is not None,  # transparency for audit
+                "input_text_provided": input_text is not None,
             },
-
-            # decision evidence (must be content-free)
             "evidence": safe_result,
-
             "metadata": metadata or {},
             "runtime": {
                 "source": "hf_space",
@@ -414,6 +407,7 @@ class DataLogger:
             "logger": {
                 "enabled": self.writer.enabled,
                 "repo": os.environ.get("GITHUB_REPO") if self.writer.enabled else None,
+                "ref": os.environ.get("GITHUB_REF") if self.writer.enabled else None,
                 "salted": bool(self._salt),
             },
             "counts": {
