@@ -2,29 +2,23 @@
 """
 Continuum API - Hugging Face Spaces Compatible App
 --------------------------------------------------
-- FastAPI lifespan (HF-safe)
-- Returns pipeline truth (no guessing at API layer)
-- Exposes raw LLM output ONLY when RETURN_LLM_RAW=1 (internal debug)
+HF-safe FastAPI lifespan + pipeline truth pass-through.
 
-PATCH:
-- ✅ Returns result["metrics"] to frontend (Decision Log Panel)
-- ✅ Exposes top-level compat truth: llm_used/cache_hit/model/usage/output_source
-- ✅ Handles BLOCK mode cleanly (no echo leakage; pipeline already enforces)
-- ✅ Avoids returning empty-string raw_ai_output (convert "" -> None)
-- ✅ Writes enterprise-safe audit log per request (hash+len only; no content)
-- ✅ Never passes raw input text into logger (purity)
-- ✅ Fix fingerprint field name: pipeline_version_fingerprint
-- ✅ Do not overwrite pipeline timing_ms.total; only add server_overhead
+SEALING PATCH (V1.0 Evidence Contract + Enterprise Audit):
+- ✅ Evidence Schema v1.0 contract (app.py is the schema packager)
+- ✅ Strict scrub: NO content-derived signals (matched_keywords/detected_keywords/oos_matched/trigger_words/etc.)
+- ✅ logger.py remains pure receiver + scrub (defense-in-depth)
+- ✅ /api/v1/stats + /api/v1/feedback endpoints for governance loop
+- ✅ Never passes raw input text into logger
+- ✅ Keep pipeline timing_ms.total untouched; only add server_overhead
 """
-
-from __future__ import annotations
 
 import os
 import time
 import math
 import logging
 import hashlib
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -42,6 +36,9 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("continuum-api")
+
+# -------------------- Versioning --------------------
+APP_VERSION = os.environ.get("APP_VERSION", "2.2.4-hf").strip() or "2.2.4-hf"
 
 # -------------------- Globals --------------------
 pipeline: Optional[Z1Pipeline] = None
@@ -81,6 +78,194 @@ def _bool_or_none(v) -> Optional[bool]:
     return None
 
 
+def _safe_int(v, default: int = 0) -> int:
+    try:
+        return int(v)
+    except Exception:
+        return int(default)
+
+
+def _safe_str(v, default: str = "") -> str:
+    try:
+        if v is None:
+            return default
+        return str(v)
+    except Exception:
+        return default
+
+
+# -------------------- Content-derived scrub (hard privacy line) --------------------
+# Anything that can leak or reconstruct text fragments must be scrubbed.
+CONTENT_DERIVED_KEYS = {
+    # generic
+    "matched", "matches", "match", "keywords", "keyword", "tokens", "token",
+    "spans", "span", "entities", "entity", "phrases", "phrase",
+    # your known fields
+    "matched_keywords", "detected_keywords", "oos_matched", "trigger_words",
+    "trigger_word", "trigger", "triggers",
+    # common LLM / prompt artifacts
+    "prompt", "messages", "completion", "response_text", "raw", "raw_text",
+    # raw text keys (double safety)
+    "text", "input_text", "original", "normalized", "repaired_text",
+    "raw_ai_output", "llm_raw_response", "llm_raw_output",
+}
+
+def scrub_no_content_derived(obj: Any) -> Any:
+    """
+    Recursive scrub that removes:
+    - raw text fields
+    - content-derived signals (keywords/matched lists/etc.)
+    This enforces the external claim: "We never store content" (incl. derived fragments).
+    """
+    if isinstance(obj, dict):
+        out: Dict[str, Any] = {}
+        for k, v in obj.items():
+            k_str = str(k)
+            if k_str in CONTENT_DERIVED_KEYS:
+                continue
+            out[k_str] = scrub_no_content_derived(v)
+        return out
+    if isinstance(obj, list):
+        return [scrub_no_content_derived(x) for x in obj]
+    return obj
+
+
+# -------------------- Evidence Schema v1.0 (contract) --------------------
+# This is the contract stored in logs. Keep stable.
+EVIDENCE_SCHEMA_V1 = {
+    "version": "1.0",
+    "required_top_keys": [
+        "schema_version",
+        "input_fp_sha256",
+        "input_length",
+        "output_fp_sha256",
+        "output_length",
+        "freq_type",
+        "mode",
+        "scenario",
+        "confidence",
+        "metrics",
+        "audit",
+        "llm_used",
+        "cache_hit",
+        "model",
+        "usage",
+        "output_source",
+        "api_version",
+        "pipeline_version_fingerprint",
+    ],
+    "required_confidence_keys": ["final", "classifier"],
+}
+
+def validate_evidence_v1(e: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    errors: List[str] = []
+    if not isinstance(e, dict):
+        return False, ["evidence_not_dict"]
+
+    for k in EVIDENCE_SCHEMA_V1["required_top_keys"]:
+        if k not in e:
+            errors.append(f"missing:{k}")
+
+    conf = e.get("confidence")
+    if not isinstance(conf, dict):
+        errors.append("confidence_not_dict")
+    else:
+        for ck in EVIDENCE_SCHEMA_V1["required_confidence_keys"]:
+            if ck not in conf:
+                errors.append(f"missing:confidence.{ck}")
+
+    # type sanity (soft)
+    if "input_length" in e and not isinstance(e.get("input_length"), int):
+        errors.append("type:input_length_not_int")
+    if "output_length" in e and not isinstance(e.get("output_length"), int):
+        errors.append("type:output_length_not_int")
+    if "llm_used" in e and e.get("llm_used") is not None and not isinstance(e.get("llm_used"), bool):
+        errors.append("type:llm_used_not_bool_or_none")
+    if "cache_hit" in e and e.get("cache_hit") is not None and not isinstance(e.get("cache_hit"), bool):
+        errors.append("type:cache_hit_not_bool_or_none")
+    if "usage" in e and not isinstance(e.get("usage"), dict):
+        errors.append("type:usage_not_dict")
+    if "audit" in e and not isinstance(e.get("audit"), dict):
+        errors.append("type:audit_not_dict")
+    if "metrics" in e and not isinstance(e.get("metrics"), dict):
+        errors.append("type:metrics_not_dict")
+
+    return (len(errors) == 0), errors
+
+
+def build_evidence_v1(
+    *,
+    req_text: str,
+    repaired_text: Optional[str],
+    freq_type: str,
+    mode: str,
+    scenario: str,
+    confidence_final: float,
+    confidence_classifier: float,
+    metrics: Optional[Dict[str, Any]],
+    audit_top: Dict[str, Any],
+    llm_used: Optional[bool],
+    cache_hit: Optional[bool],
+    model_name: str,
+    usage: Dict[str, Any],
+    output_source: Optional[str],
+    pipeline_version_fingerprint: str,
+) -> Dict[str, Any]:
+    # fingerprints
+    inp_fp = _sha256_hex(req_text)
+    out_text = repaired_text if isinstance(repaired_text, str) else ("" if repaired_text is None else str(repaired_text))
+    out_fp = _sha256_hex(out_text)
+
+    # scrub audit/metrics from any content-derived fragments BEFORE logging
+    audit_safe = scrub_no_content_derived(audit_top if isinstance(audit_top, dict) else {})
+    metrics_safe = scrub_no_content_derived(metrics if isinstance(metrics, dict) else {})
+
+    evidence: Dict[str, Any] = {
+        "schema_version": "1.0",
+
+        # fingerprints (content-free)
+        "input_fp_sha256": inp_fp,
+        "input_length": len(req_text or ""),
+        "output_fp_sha256": out_fp,
+        "output_length": len(out_text or ""),
+
+        # decision truth
+        "freq_type": _safe_str(freq_type, "Unknown"),
+        "mode": _safe_str(mode, "no-op"),
+        "scenario": _safe_str(scenario, "unknown"),
+        "confidence": {
+            "final": float(_safe_conf(confidence_final, 0.0)),
+            "classifier": float(_safe_conf(confidence_classifier, 0.0)),
+        },
+
+        # governance truth (scrubbed)
+        "metrics": metrics_safe if isinstance(metrics_safe, dict) else {},
+        "audit": audit_safe if isinstance(audit_safe, dict) else {},
+
+        # compat truth
+        "llm_used": llm_used,
+        "cache_hit": cache_hit,
+        "model": _safe_str(model_name, ""),
+        "usage": usage if isinstance(usage, dict) else {},
+
+        "output_source": output_source,
+
+        # versioning
+        "api_version": APP_VERSION,
+        "pipeline_version_fingerprint": _safe_str(pipeline_version_fingerprint, ""),
+    }
+
+    ok, errs = validate_evidence_v1(evidence)
+    if not ok:
+        # Do not break runtime; attach schema errors (content-free)
+        evidence["schema_valid"] = False
+        evidence["schema_errors"] = errs
+    else:
+        evidence["schema_valid"] = True
+
+    return evidence
+
+
 # -------------------- Lifespan (HF-safe) --------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -113,7 +298,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Continuum API",
     description="AI conversation risk governance (output-side)",
-    version="2.2.4-hf",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -125,9 +310,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # -------------------- Models --------------------
 class AnalyzeRequest(BaseModel):
-    # ✅ align with pipeline max_len default (2000)
     text: str = Field(..., min_length=1, max_length=2000)
 
 
@@ -141,21 +326,23 @@ class AnalyzeResponse(BaseModel):
     repaired_text: Optional[str] = None
     repair_note: Optional[str] = None
 
-    # Layer 2 truth (ONLY present when RETURN_LLM_RAW=1 and LLM raw is available)
-    raw_ai_output: Optional[str] = None
+    raw_ai_output: Optional[str] = None  # debug only
 
-    # ✅ Truth / compat fields (top-level, not guessed)
     llm_used: Optional[bool] = None
     cache_hit: Optional[bool] = None
     model: str = ""
     usage: Dict[str, Any] = {}
     output_source: Optional[str] = None
 
-    # What Playground expects
     audit: Dict[str, Any]
-
-    # Governance metrics for the Decision Log Panel
     metrics: Optional[Dict[str, Any]] = None
+
+
+class FeedbackRequest(BaseModel):
+    log_id: str = Field(..., min_length=1, max_length=100)
+    accuracy: int = Field(0, ge=0, le=5)
+    helpful: int = Field(0, ge=0, le=5)
+    accepted: bool = False
 
 
 # -------------------- Endpoints --------------------
@@ -166,6 +353,7 @@ async def root():
         "status": "running",
         "docs": "/docs",
         "health": "/health",
+        "version": APP_VERSION,
     }
 
 
@@ -176,7 +364,55 @@ async def health():
         "logger_ready": data_logger is not None,
         "github_backup_enabled": github_backup is not None,
         "time": _utc_now(),
+        "version": APP_VERSION,
     }
+
+
+@app.get("/api/v1/stats")
+async def stats():
+    """
+    Governance ops endpoint (content-free).
+    Shows runtime counters + whether GitHub logging is enabled.
+    """
+    if not data_logger:
+        return {"ok": False, "reason": "logger_not_ready", "time": _utc_now(), "version": APP_VERSION}
+
+    payload = {
+        "ok": True,
+        "time": _utc_now(),
+        "version": APP_VERSION,
+        "logger": data_logger.get_stats(),
+    }
+
+    # include pipeline fingerprint if available (content-free)
+    try:
+        if pipeline and hasattr(pipeline, "pipeline_version_fingerprint"):
+            payload["pipeline_version_fingerprint"] = getattr(pipeline, "pipeline_version_fingerprint", "")
+    except Exception:
+        pass
+
+    return payload
+
+
+@app.post("/api/v1/feedback")
+async def feedback(req: FeedbackRequest):
+    """
+    Governance feedback loop (content-free).
+    """
+    if not data_logger:
+        raise HTTPException(503, "Logger not ready")
+
+    try:
+        res = data_logger.log_feedback(
+            log_id=req.log_id,
+            accuracy=req.accuracy,
+            helpful=req.helpful,
+            accepted=req.accepted,
+        )
+        return {"ok": True, "result": res, "time": _utc_now()}
+    except Exception as e:
+        # never break the API contract; but feedback is a governance tool, so surface error.
+        raise HTTPException(500, f"feedback_failed:{e}")
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
@@ -211,7 +447,7 @@ async def analyze(req: AnalyzeRequest):
     if repaired_text is None and mode == "block":
         repaired_text = ""
 
-    # ✅ Layer 2 truth (debug only; already gated in repairer)
+    # Layer 2 truth (debug only; repairer already gated)
     raw_ai_output = (
         out.get("raw_ai_output")
         or out.get("llm_raw_output")
@@ -220,14 +456,14 @@ async def analyze(req: AnalyzeRequest):
     )
     raw_ai_output = _none_if_empty(raw_ai_output)
 
-    # ✅ Top-level compat truth (do not guess; only type-normalize)
+    # Top-level compat truth (do not guess; only type-normalize)
     llm_used = _bool_or_none(result.get("llm_used", None))
     cache_hit = _bool_or_none(result.get("cache_hit", None))
     model_name = result.get("model", "") or ""
     usage = result.get("usage", {}) if isinstance(result.get("usage", {}), dict) else {}
     output_source = result.get("output_source", None)
 
-    # ✅ Audit: pass-through pipeline truth, add server overhead timing without overwriting totals
+    # Audit: pass-through pipeline truth, add server_overhead WITHOUT overwriting total
     audit_top = result.get("audit") if isinstance(result.get("audit"), dict) else {}
     audit = dict(audit_top)
 
@@ -235,70 +471,43 @@ async def analyze(req: AnalyzeRequest):
         audit["timing_ms"] = {}
 
     server_overhead = int((time.time() - t0) * 1000)
-
-    # never overwrite pipeline/repairer total; only add overhead field
     audit["timing_ms"]["server_overhead"] = server_overhead
     audit["server_time_utc"] = _utc_now()
 
-    # ✅ Metrics: pipeline truth
-    metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else None
+    # Metrics: pipeline truth
+    metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else {}
 
-    # ✅ Fingerprint (truth)
+    # Fingerprint (truth)
     pipeline_fp = (
         result.get("pipeline_version_fingerprint")
         or result.get("pipeline_fingerprint")
         or ""
     )
 
-    # -------------------- Enterprise-safe log (NO CONTENT) --------------------
-    # We log only fingerprints + decision evidence, never raw text.
+    # -------------------- Enterprise-safe log (Schema V1.0, NO CONTENT) --------------------
     if data_logger:
         try:
-            inp_fp = _sha256_hex(req.text)
+            evidence = build_evidence_v1(
+                req_text=req.text,
+                repaired_text=repaired_text,
+                freq_type=freq_type,
+                mode=mode,
+                scenario=scenario,
+                confidence_final=confidence_final,
+                confidence_classifier=confidence_classifier,
+                metrics=metrics,
+                audit_top=audit_top,
+                llm_used=llm_used,
+                cache_hit=cache_hit,
+                model_name=model_name,
+                usage=usage,
+                output_source=output_source,
+                pipeline_version_fingerprint=pipeline_fp,
+            )
 
-            out_text = repaired_text if isinstance(repaired_text, str) else ("" if repaired_text is None else str(repaired_text))
-            out_fp = _sha256_hex(out_text)
-
-            evidence = {
-                # fingerprints
-                "input_fp_sha256": inp_fp,
-                "input_length": len(req.text or ""),
-                "output_fp_sha256": out_fp,
-                "output_length": len(out_text or ""),
-
-                # decision truth
-                "freq_type": freq_type,
-                "mode": mode,
-                "scenario": scenario,
-                "confidence": {
-                    "final": confidence_final,
-                    "classifier": confidence_classifier,
-                },
-
-                # governance truth
-                "metrics": metrics or {},
-
-                # audit truth (content-free)
-                "audit": audit_top,
-
-                # compat fields (truth)
-                "llm_used": llm_used,
-                "cache_hit": cache_hit,
-                "model": model_name,
-                "usage": usage,
-                "output_source": output_source,
-
-                # versioning
-                "api_version": app.version,
-                "pipeline_version_fingerprint": pipeline_fp,
-            }
-
-            meta = {
-                "runtime": {"platform": "hf_space"},
-            }
+            meta = {"runtime": {"platform": "hf_space"}}
 
             # IMPORTANT: do NOT pass raw input into logger
-            # logger must support None (we'll fix in logger.py next)
             log_res = data_logger.log_analysis(
                 input_text=None,
                 output_result=evidence,
@@ -310,7 +519,6 @@ async def analyze(req: AnalyzeRequest):
                 audit["log_id"] = log_res["timestamp"]
 
         except Exception as e:
-            # never break API
             logger.warning(f"Logging skipped: {e}")
 
     return AnalyzeResponse(
