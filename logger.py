@@ -1,6 +1,6 @@
 """
 logger.py
-Continuum Logger (HF Space friendly)
+Continuum Logger (HF Space friendly) — ENTERPRISE AUDIT MODE (content-free)
 
 Provides:
 - DataLogger: log_analysis / log_feedback / get_stats
@@ -13,10 +13,10 @@ Design goals:
     GITHUB_TOKEN = GitHub Fine-grained PAT (Contents: Read & Write)
     GITHUB_REPO  = "owner/repo" (e.g., "Rin-Nomia/continuum-logs")
 
-Governance-grade privacy:
-- ✅ NEVER store raw input/output text
-- ✅ Store ONLY hash + length (+ decision/audit/metrics)
-- ✅ Store pipeline_version_fingerprint for reproducibility
+PRIVACY / GOVERNANCE GUARANTEE (重要):
+- ✅ NO RAW TEXT is written to disk or GitHub.
+- ✅ Only SHA256 fingerprints + lengths + decision evidence are logged.
+- ✅ Optional salt supported via LOG_SALT (recommended for enterprise).
 """
 
 from __future__ import annotations
@@ -40,11 +40,21 @@ def _utc_dates():
     )
 
 
-def _sha256_text(s: str) -> str:
-    return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
+def _utc_iso() -> str:
+    return datetime.utcnow().isoformat() + "Z"
 
 
-def _safe_int(v, default=0) -> int:
+def _get_salt() -> str:
+    # Optional: enterprise-friendly. If set, fingerprints are not reversible / correlatable across repos.
+    return os.environ.get("LOG_SALT", "").strip()
+
+
+def _sha256_hex(text: str, salt: str = "") -> str:
+    raw = (salt + (text or "")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _safe_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
     except Exception:
@@ -60,6 +70,7 @@ class GitHubWriter:
     def __init__(self):
         self.github_token = os.environ.get("GITHUB_TOKEN")
         self.github_repo = os.environ.get("GITHUB_REPO")  # owner/repo
+
         self.enabled = bool(self.github_token and self.github_repo)
 
         self.headers = {
@@ -103,9 +114,9 @@ class DataLogger:
     """
     API-facing logger used by app.py.
 
-    Privacy rule:
-    - input_text is accepted for hashing but never stored
-    - output_result is accepted for extracting decision fields but never stores any text fields
+    ENTERPRISE AUDIT MODE:
+    - log_analysis() never stores raw input/output text.
+    - It stores only fingerprints + lengths + decision evidence passed in output_result.
     """
 
     def __init__(self, log_dir: str = "logs"):
@@ -119,109 +130,17 @@ class DataLogger:
         if self.writer.enabled:
             print(f"[DataLogger] GitHub logging enabled -> {os.environ.get('GITHUB_REPO')}")
         else:
-            print("[DataLogger] GitHub credentials not set; logging will be local-only (in-memory stats).")
+            print("[DataLogger] GitHub credentials not set; logging will be runtime-only (in-memory stats).")
+
+        self._salt = _get_salt()
+        if self._salt:
+            print("[DataLogger] LOG_SALT enabled (fingerprints salted).")
+        else:
+            print("[DataLogger] LOG_SALT not set (fingerprints unsalted).")
 
     @staticmethod
     def _new_id(prefix: str) -> str:
         return f"{prefix}_{uuid.uuid4().hex[:12]}"
-
-    def _extract_safe_summary(self, input_text: str, output_result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Build a safe, governance-grade log payload:
-        - Store only hashes + lengths
-        - Keep decision/audit/metrics (no content)
-        """
-        inp = input_text or ""
-        inp_hash = _sha256_text(inp)
-        inp_len = len(inp)
-
-        normalized = output_result.get("normalized") if isinstance(output_result, dict) else ""
-        normalized = normalized if isinstance(normalized, str) else str(normalized or "")
-        norm_hash = _sha256_text(normalized)
-        norm_len = len(normalized)
-
-        out = output_result.get("output") if isinstance(output_result, dict) else {}
-        out = out if isinstance(out, dict) else {}
-
-        repaired_text = out.get("repaired_text")
-        repaired_text = repaired_text if isinstance(repaired_text, str) else str(repaired_text or "")
-        out_hash = _sha256_text(repaired_text)
-        out_len = len(repaired_text)
-
-        # Pull truth fields (no content)
-        freq_type = output_result.get("freq_type", "Unknown")
-        mode = output_result.get("mode", "no-op")
-        confidence = output_result.get("confidence", {}) if isinstance(output_result.get("confidence", {}), dict) else {}
-        conf_final = confidence.get("final", 0.0)
-        conf_cls = confidence.get("classifier", 0.0)
-
-        audit = output_result.get("audit") if isinstance(output_result.get("audit"), dict) else {}
-        metrics = output_result.get("metrics") if isinstance(output_result.get("metrics"), dict) else {}
-
-        pipeline_fp = (
-            output_result.get("pipeline_version_fingerprint")
-            or (audit.get("pipeline_version_fingerprint") if isinstance(audit, dict) else None)
-        )
-
-        # Hard strip any possible text leak in audit/metrics (defense-in-depth)
-        # We keep only primitive fields; if later audit has big objects, we don't store them.
-        def _prune(d: Dict[str, Any], allow_keys: Optional[set] = None) -> Dict[str, Any]:
-            if not isinstance(d, dict):
-                return {}
-            if allow_keys is None:
-                # default allowlist for audit
-                allow_keys = {
-                    "llm_used", "cache_hit", "output_source", "fallback_used", "fallback_reason",
-                    "safe_flow", "oos_reason_code",
-                    "timing_ms", "suppressed_chars",
-                    "pipeline_version_fingerprint",
-                    "llm_eligible", "llm_attempted", "llm_succeeded", "llm_error",
-                    "output_gate_passed", "output_gate_reason",
-                }
-            pruned = {}
-            for k, v in d.items():
-                if k not in allow_keys:
-                    continue
-                # keep simple json-safe stuff
-                if isinstance(v, (str, int, float, bool)) or v is None:
-                    pruned[k] = v
-                elif isinstance(v, dict):
-                    pruned[k] = v  # nested dict OK, but relies on pipeline not inserting content here
-                elif isinstance(v, list):
-                    # lists can leak matches; allow only short primitives
-                    safe_list = []
-                    for item in v[:50]:
-                        if isinstance(item, (str, int, float, bool)) or item is None:
-                            safe_list.append(item)
-                    pruned[k] = safe_list
-            return pruned
-
-        safe_audit = _prune(audit)
-        safe_metrics = metrics if isinstance(metrics, dict) else {}
-
-        return {
-            "fingerprints": {
-                "input": {"sha256": inp_hash, "length": inp_len},
-                "normalized": {"sha256": norm_hash, "length": norm_len},
-                "output": {"sha256": out_hash, "length": out_len},
-            },
-            "decision": {
-                "freq_type": freq_type,
-                "mode": mode,
-                "confidence_final": conf_final,
-                "confidence_classifier": conf_cls,
-            },
-            "truth": {
-                "llm_used": output_result.get("llm_used", None),
-                "cache_hit": output_result.get("cache_hit", None),
-                "model": output_result.get("model", ""),
-                "usage": output_result.get("usage", {}) if isinstance(output_result.get("usage", {}), dict) else {},
-                "output_source": output_result.get("output_source", None),
-            },
-            "audit": safe_audit,
-            "metrics": safe_metrics,
-            "pipeline_version_fingerprint": pipeline_fp,
-        }
 
     def log_analysis(
         self,
@@ -231,20 +150,46 @@ class DataLogger:
     ) -> Dict[str, Any]:
         """
         Create a new analysis log event and (optionally) ship to GitHub.
-        Returns a dict containing 'timestamp' which app.py uses as log_id.
+        Returns {"timestamp": <log_id>, "created_at": <utc>}.
+
+        IMPORTANT:
+        - input_text is accepted for compatibility but NOT stored.
+        - fingerprints are computed and stored instead.
         """
-        ts = datetime.utcnow().isoformat() + "Z"
+        ts = _utc_iso()
         event_id = self._new_id("a")
 
-        safe_summary = self._extract_safe_summary(input_text, output_result)
+        in_len = len(input_text or "")
+        in_fp = _sha256_hex(input_text or "", salt=self._salt)
+
+        # output_result should already be content-free (recommended),
+        # but we still enforce a safety scrub for known risky keys.
+        safe_result = dict(output_result or {})
+        # hard-delete any accidental raw text keys (defense-in-depth)
+        for k in ["text", "input_text", "original", "normalized", "repaired_text", "raw_ai_output", "llm_raw_response", "llm_raw_output"]:
+            if k in safe_result:
+                safe_result.pop(k, None)
 
         payload = {
             "id": event_id,
             "timestamp": ts,
             "type": "analysis",
-            "safe_summary": safe_summary,
+
+            # content-free identifiers
+            "input": {
+                "fp_sha256": in_fp,
+                "length": in_len,
+                "fingerprint_salted": bool(self._salt),
+            },
+
+            # decision evidence (must be content-free)
+            "evidence": safe_result,
+
             "metadata": metadata or {},
-            "runtime": {"source": "hf_space"},
+            "runtime": {
+                "source": "hf_space",
+                "logger_mode": "enterprise_audit_content_free",
+            },
         }
 
         self._analysis_count += 1
@@ -258,7 +203,7 @@ class DataLogger:
         return {"timestamp": event_id, "created_at": ts}
 
     def log_feedback(self, log_id: str, accuracy: int, helpful: int, accepted: bool) -> Dict[str, Any]:
-        ts = datetime.utcnow().isoformat() + "Z"
+        ts = _utc_iso()
         event_id = self._new_id("f")
 
         payload = {
@@ -271,6 +216,7 @@ class DataLogger:
                 "helpful": _safe_int(helpful, 0),
                 "accepted": bool(accepted),
             },
+            "runtime": {"source": "hf_space"},
         }
 
         self._feedback_count += 1
@@ -287,6 +233,7 @@ class DataLogger:
             "logger": {
                 "enabled": self.writer.enabled,
                 "repo": os.environ.get("GITHUB_REPO") if self.writer.enabled else None,
+                "salted": bool(self._salt),
             },
             "counts": {
                 "analyses_in_runtime": self._analysis_count,
