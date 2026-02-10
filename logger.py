@@ -22,6 +22,11 @@ Compatibility:
 - log_analysis(input_text=...) accepts str OR None.
 - If input_text is provided, it is never stored; only fingerprint+len computed.
 - Defense-in-depth: scrub risky keys inside output_result before writing.
+
+PATCH (enterprise-hardening):
+- ✅ Stronger scrub: remove derived-content lists (matched keywords, oos matches, triggers)
+- ✅ Safe-by-default: drop any huge list/dict under suspicious keys
+- ✅ Keep schema stable for app.py (no breaking changes)
 """
 
 from __future__ import annotations
@@ -85,6 +90,7 @@ def _safe_str(v: Any, default: str = "") -> str:
 # ----------------------------
 # Safety scrub (defense-in-depth)
 # ----------------------------
+# 1) Hard-drop obvious raw text fields (direct content)
 _RISKY_TEXT_KEYS = {
     # common raw text keys
     "text",
@@ -96,29 +102,127 @@ _RISKY_TEXT_KEYS = {
     "raw_ai_output",
     "llm_raw_response",
     "llm_raw_output",
-    # sometimes nested payloads use these
+    # prompt / message bundles
     "prompt",
     "messages",
     "completion",
     "response_text",
 }
 
+# 2) Hard-drop derived-content fields (lists that leak content patterns)
+# These are not "raw text", but they can contain fragments / keywords that reconstruct user content.
+_RISKY_DERIVED_KEYS = {
+    # OOS / safety gate matches
+    "oos_matched",
+    "matched",
+    "matched_keywords",
+    "matched_terms",
+    "matched_phrases",
+    "matched_patterns",
+    "matched_rules",
+    "lexicon_hits",
+    "trigger_words",
+    "trigger_terms",
+    "hit_keywords",
+    "hit_terms",
+    "detected_keywords",
+    "detected_terms",
+    "detected_phrases",
+    "keywords",
+    "keyword_hits",
+    "pattern_hits",
+}
+
+# 3) Size guards: if an unexpected key contains very large structures, drop it.
+# (Enterprise logs should be stable, small, and non-sensitive.)
+_MAX_LIST_LEN = 80
+_MAX_STR_LEN = 600
+_MAX_DICT_KEYS = 120
+
+
+def _looks_like_sensitive_key(key: str) -> bool:
+    k = (key or "").strip().lower()
+    if not k:
+        return False
+    # broad heuristics: these keys tend to contain content or near-content
+    signals = [
+        "text", "content", "message", "prompt", "completion", "response",
+        "utterance", "transcript", "input", "output",
+        "matched", "keyword", "trigger", "lexicon", "pattern", "phrase",
+    ]
+    return any(s in k for s in signals)
+
+
+def _scrub_value_if_too_large(key: str, value: Any) -> Optional[Any]:
+    """
+    Returns:
+      - None means "drop this field"
+      - otherwise returns the (possibly trimmed) value
+    """
+    # Strings: keep only short strings; long strings can be content
+    if isinstance(value, str):
+        if len(value) > _MAX_STR_LEN and _looks_like_sensitive_key(key):
+            return None
+        # keep as-is (short)
+        return value
+
+    # Lists: drop long lists if key is sensitive; else trim conservatively
+    if isinstance(value, list):
+        if len(value) > _MAX_LIST_LEN and _looks_like_sensitive_key(key):
+            return None
+        if len(value) > _MAX_LIST_LEN:
+            return value[:_MAX_LIST_LEN]
+        return value
+
+    # Dicts: drop giant dicts under sensitive keys; else allow but cap keys
+    if isinstance(value, dict):
+        if len(value.keys()) > _MAX_DICT_KEYS and _looks_like_sensitive_key(key):
+            return None
+        if len(value.keys()) > _MAX_DICT_KEYS:
+            # keep deterministic subset by sorted keys
+            keys = sorted(list(value.keys()))[:_MAX_DICT_KEYS]
+            return {k: value[k] for k in keys}
+        return value
+
+    return value
+
 
 def _scrub_dict_content_free(obj: Any) -> Any:
     """
-    Remove obvious raw-text fields recursively.
+    Remove raw-text fields + derived-content fields recursively.
     This is not a perfect PII scrubber; it's a hard rule enforcement:
-    We do not store known raw-text keys.
+    - We do not store known raw-text keys.
+    - We do not store known derived-content/match lists.
+    - We drop suspicious oversized content-like structures.
     """
     if isinstance(obj, dict):
         out: Dict[str, Any] = {}
         for k, v in obj.items():
+            # hard-drop
             if k in _RISKY_TEXT_KEYS:
                 continue
-            out[k] = _scrub_dict_content_free(v)
+            if k in _RISKY_DERIVED_KEYS:
+                continue
+
+            # scrub recursively first
+            scrubbed = _scrub_dict_content_free(v)
+
+            # enforce size guards / sensitive heuristics
+            guarded = _scrub_value_if_too_large(k, scrubbed)
+            if guarded is None:
+                continue
+
+            out[k] = guarded
         return out
+
     if isinstance(obj, list):
-        return [_scrub_dict_content_free(x) for x in obj]
+        # scrub list items first
+        cleaned = [_scrub_dict_content_free(x) for x in obj]
+        # if list is huge and items might be sensitive, cap
+        if len(cleaned) > _MAX_LIST_LEN:
+            cleaned = cleaned[:_MAX_LIST_LEN]
+        return cleaned
+
     return obj
 
 
@@ -232,7 +336,6 @@ class DataLogger:
             in_len = None
             in_fp = None
             # Try to use evidence fingerprints if app already computed them.
-            # (Still scrubbed below; these keys are not raw text.)
             try:
                 if isinstance(output_result, dict):
                     in_fp = output_result.get("input_fp_sha256")
@@ -244,7 +347,7 @@ class DataLogger:
             in_fp = _sha256_hex(input_text or "", salt=self._salt)
 
         # output_result should already be content-free (recommended),
-        # but we still enforce a safety scrub for known risky keys (defense-in-depth).
+        # but we still enforce a safety scrub for risky keys (defense-in-depth).
         safe_result = _scrub_dict_content_free(dict(output_result or {}))
 
         payload: Dict[str, Any] = {
