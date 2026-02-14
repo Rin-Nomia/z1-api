@@ -204,6 +204,7 @@ These will only be introduced behind explicit feature gates.
 	•	z1_mvp: https://github.com/Rin-Nomia/z1_mvp
 	•	Playground: https://rin-nomia.github.io/continuum-api/playground.html
 	•	API Docs: /docs
+	•	Product Constitution v1.0: docs/PRODUCT_CONSTITUTION_v1_0.md
 
 ⸻
 
