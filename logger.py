@@ -17,7 +17,7 @@ PRIVACY / GOVERNANCE GUARANTEE (重要):
 - ✅ NO RAW TEXT is written to disk or GitHub.
 - ✅ NO content-derived fragments are stored (matched keywords / oos matches / triggers).
 - ✅ Only SHA256 fingerprints + lengths + decision evidence are logged.
-- ✅ Optional salt supported via LOG_SALT (recommended for enterprise).
+- ✅ LOG_SALT is REQUIRED (startup will fail without it).
 
 Compatibility:
 - log_analysis(input_text=...) accepts str OR None.
@@ -63,7 +63,7 @@ def _utc_iso() -> str:
 # Fingerprint helpers
 # ----------------------------
 def _get_salt() -> str:
-    # Optional: enterprise-friendly. If set, fingerprints are not reversible / correlatable across repos.
+    # Required for enterprise privacy hardening.
     return os.environ.get("LOG_SALT", "").strip()
 
 
@@ -311,10 +311,13 @@ class DataLogger:
             print("[DataLogger] GitHub credentials not set; logging will be runtime-only (in-memory stats).")
 
         self._salt = _get_salt()
-        if self._salt:
-            print("[DataLogger] LOG_SALT enabled (fingerprints salted).")
-        else:
-            print("[DataLogger] LOG_SALT not set (fingerprints unsalted).")
+        if not self._salt:
+            # Fail-fast: never allow runtime to operate in unsalted mode.
+            raise RuntimeError(
+                "CRITICAL_SECURITY_ERROR: LOG_SALT is required. "
+                "Refusing to start without salted fingerprints."
+            )
+        print("[DataLogger] LOG_SALT enabled (fingerprints salted).")
 
     @staticmethod
     def _new_id(prefix: str) -> str:
