@@ -1,0 +1,7 @@
+# API 治理與隱私防線
+description: 處理 API 請求與日誌審計時的硬性規範
+
+# 核心指令
+- 嚴禁存入 raw_input：在 logger.py 運作時，必須先進行 Hash 處理。
+- 輸出一致性：API 回傳必須包含 `decision_state` (ALLOW/GUIDE/BLOCK)。
+- 安全性：禁止將 API Key 寫死在代碼中，必須檢查 .env 使用狀況。
