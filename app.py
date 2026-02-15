@@ -16,6 +16,7 @@ SEALING PATCH (V1.0 Evidence Contract + Enterprise Audit):
 import os
 import time
 import math
+import asyncio
 import logging
 import hashlib
 from collections import deque
@@ -38,6 +39,13 @@ except Exception as e:
     PIPELINE_IMPORT_ERROR = f"{type(e).__name__}: {e}"
 from logger import DataLogger, GitHubBackup
 
+LICENSE_IMPORT_ERROR: Optional[str] = None
+try:
+    from core.license_manager import LicenseManager
+except Exception as e:
+    LicenseManager = None  # type: ignore[assignment,misc]
+    LICENSE_IMPORT_ERROR = f"{type(e).__name__}: {e}"
+
 # -------------------- Logging --------------------
 logging.basicConfig(
     level=logging.INFO,
@@ -55,18 +63,33 @@ PIPELINE_MAX_INPUT_LENGTH = int(os.environ.get("PIPELINE_MAX_INPUT_LENGTH", "500
 pipeline: Optional[Z1Pipeline] = None
 data_logger: Optional[DataLogger] = None
 github_backup: Optional[GitHubBackup] = None
+license_manager: Optional["LicenseManager"] = None
+license_check_task: Optional[asyncio.Task] = None
 last_decision_state: Optional[str] = None
 last_decision_time: Optional[str] = None
 
 ALLOWED_DECISION_STATES = {"ALLOW", "GUIDE", "BLOCK"}
 PRIVACY_GUARD_OK = True
 LATENCY_WINDOW_SIZE = int(os.environ.get("LATENCY_WINDOW_SIZE", "2000"))
+LICENSE_ENFORCEMENT_MODE = os.environ.get("LICENSE_ENFORCEMENT_MODE", "degrade").strip().lower() or "degrade"
+LICENSE_CHECK_INTERVAL_SECONDS = int(os.environ.get("LICENSE_CHECK_INTERVAL_SECONDS", "3600"))
 
 runtime_decision_counts: Dict[str, int] = {"ALLOW": 0, "GUIDE": 0, "BLOCK": 0}
 runtime_total_analyses: int = 0
 runtime_llm_used_true: int = 0
 runtime_oos_hits: int = 0
 runtime_latency_ms: Deque[int] = deque(maxlen=LATENCY_WINDOW_SIZE)
+license_status: Dict[str, Any] = {
+    "valid": False,
+    "reason": "license_not_checked",
+    "license_id": "",
+    "expiry_date": None,
+    "quota_limit": None,
+    "usage_count": 0,
+    "quota_remaining": None,
+    "checked_at_utc": None,
+}
+service_halted_by_license: bool = False
 
 
 def _utc_now() -> str:
@@ -152,6 +175,63 @@ def _percentile(values: List[int], p: float) -> Optional[float]:
     d0 = sv[f] * (c - k)
     d1 = sv[c] * (k - f)
     return float(d0 + d1)
+
+
+def _current_usage_for_license() -> int:
+    if data_logger and hasattr(data_logger, "get_usage_snapshot"):
+        try:
+            snap = data_logger.get_usage_snapshot()
+            return int((snap or {}).get("analysis_in_month", 0))
+        except Exception:
+            return 0
+    return 0
+
+
+def _refresh_license_status() -> Dict[str, Any]:
+    global license_status
+    if not license_manager:
+        license_status = {
+            "valid": False,
+            "reason": "license_manager_not_ready",
+            "license_id": "",
+            "expiry_date": None,
+            "quota_limit": None,
+            "usage_count": _current_usage_for_license(),
+            "quota_remaining": None,
+            "checked_at_utc": _utc_now(),
+        }
+        return license_status
+
+    usage = _current_usage_for_license()
+    try:
+        result = license_manager.validate(usage_count=usage)
+        license_status = result.to_dict() if hasattr(result, "to_dict") else dict(result)  # type: ignore[arg-type]
+    except Exception as e:
+        license_status = {
+            "valid": False,
+            "reason": f"license_validation_exception:{e}",
+            "license_id": "",
+            "expiry_date": None,
+            "quota_limit": None,
+            "usage_count": usage,
+            "quota_remaining": None,
+            "checked_at_utc": _utc_now(),
+        }
+    return license_status
+
+
+async def _license_watchdog_loop() -> None:
+    global service_halted_by_license
+    while True:
+        st = _refresh_license_status()
+        if not st.get("valid", False):
+            reason = st.get("reason", "unknown")
+            if LICENSE_ENFORCEMENT_MODE == "stop":
+                service_halted_by_license = True
+                logger.critical(f"License invalid in stop mode, service halted: {reason}")
+            else:
+                logger.warning(f"License invalid in degrade mode: {reason}")
+        await asyncio.sleep(max(60, LICENSE_CHECK_INTERVAL_SECONDS))
 
 
 # -------------------- Content-derived scrub (hard privacy line) --------------------
@@ -331,7 +411,7 @@ def build_evidence_v1(
 # -------------------- Lifespan (HF-safe) --------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global pipeline, data_logger, github_backup
+    global pipeline, data_logger, github_backup, license_manager, license_check_task, service_halted_by_license
 
     logger.info("🚀 Starting Continuum API (HF Space)")
     if PIPELINE_IMPORT_ERROR:
@@ -340,6 +420,23 @@ async def lifespan(app: FastAPI):
     else:
         pipeline = Z1Pipeline(debug=False)
     data_logger = DataLogger(log_dir="logs")
+
+    # License manager bootstrap
+    if LICENSE_IMPORT_ERROR:
+        logger.error(f"License manager import failed: {LICENSE_IMPORT_ERROR}")
+        license_manager = None
+    elif LicenseManager is None:
+        license_manager = None
+    else:
+        license_manager = LicenseManager.from_env()
+
+    st = _refresh_license_status()
+    if not st.get("valid", False):
+        reason = st.get("reason", "license_invalid")
+        if LICENSE_ENFORCEMENT_MODE == "stop":
+            logger.critical(f"Startup blocked by license (stop mode): {reason}")
+            raise RuntimeError(f"license_startup_blocked:{reason}")
+        logger.warning(f"Startup in degraded mode due to invalid license: {reason}")
 
     token = os.environ.get("GITHUB_TOKEN")
     repo = os.environ.get("GITHUB_REPO")
@@ -354,8 +451,26 @@ async def lifespan(app: FastAPI):
     else:
         github_backup = None
 
+    # Hourly (configurable) license guard loop
+    license_check_task = asyncio.create_task(_license_watchdog_loop())
+
     logger.info("✅ Startup complete")
     yield
+
+    # finalize signed monthly usage summary on shutdown
+    try:
+        if data_logger and hasattr(data_logger, "emit_signed_monthly_summary"):
+            data_logger.emit_signed_monthly_summary()
+    except Exception as e:
+        logger.warning(f"Usage summary finalization skipped: {e}")
+
+    if license_check_task:
+        license_check_task.cancel()
+        try:
+            await license_check_task
+        except asyncio.CancelledError:
+            pass
+
     logger.info("🧹 Shutdown complete")
 
 
@@ -408,6 +523,14 @@ class FeedbackRequest(BaseModel):
     accepted: bool = False
 
 
+class UsageSummaryResponse(BaseModel):
+    month: str
+    summary_path: str
+    sig_path: str
+    signature: str
+    counts: Dict[str, int]
+
+
 # -------------------- Endpoints --------------------
 @app.get("/")
 async def root():
@@ -426,6 +549,11 @@ async def health():
     return {
         "pipeline_ready": pipeline is not None,
         "pipeline_import_error": PIPELINE_IMPORT_ERROR,
+        "license_import_error": LICENSE_IMPORT_ERROR,
+        "license_enforcement_mode": LICENSE_ENFORCEMENT_MODE,
+        "license_valid": bool(license_status.get("valid", False)),
+        "license_reason": license_status.get("reason"),
+        "service_halted_by_license": service_halted_by_license,
         "logger_ready": data_logger is not None,
         "github_backup_enabled": github_backup is not None,
         "time": _utc_now(),
@@ -443,6 +571,10 @@ async def runtime_status():
     return {
         "started": (pipeline is not None) and (data_logger is not None),
         "pipeline_import_error": PIPELINE_IMPORT_ERROR,
+        "license_import_error": LICENSE_IMPORT_ERROR,
+        "license_enforcement_mode": LICENSE_ENFORCEMENT_MODE,
+        "license_status": dict(license_status),
+        "service_halted_by_license": service_halted_by_license,
         "last_decision_state": last_decision_state,
         "last_decision_time": last_decision_time,
         "privacy_guard_ok": PRIVACY_GUARD_OK,
@@ -470,6 +602,8 @@ async def ops_metrics():
         "ok": True,
         "time": _utc_now(),
         "version": APP_VERSION,
+        "license_status": dict(license_status),
+        "service_halted_by_license": service_halted_by_license,
         "window_size": len(lat_samples),
         "totals": {
             "analyses": total,
@@ -503,6 +637,8 @@ async def stats():
         "ok": True,
         "time": _utc_now(),
         "version": APP_VERSION,
+        "license_status": dict(license_status),
+        "service_halted_by_license": service_halted_by_license,
         "logger": data_logger.get_stats(),
     }
 
@@ -537,10 +673,30 @@ async def feedback(req: FeedbackRequest):
         raise HTTPException(500, f"feedback_failed:{e}")
 
 
+@app.post("/api/v1/billing/usage-summary", response_model=UsageSummaryResponse)
+async def export_usage_summary(month: Optional[str] = None):
+    if not data_logger:
+        raise HTTPException(503, "Logger not ready")
+    if not hasattr(data_logger, "emit_signed_monthly_summary"):
+        raise HTTPException(500, "signed_usage_not_supported")
+    try:
+        res = data_logger.emit_signed_monthly_summary(month=month)
+        return UsageSummaryResponse(**res)
+    except Exception as e:
+        raise HTTPException(500, f"usage_summary_failed:{e}")
+
+
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
 async def analyze(req: AnalyzeRequest):
     global last_decision_state, last_decision_time
     global runtime_total_analyses, runtime_llm_used_true, runtime_oos_hits
+
+    st = _refresh_license_status()
+    if service_halted_by_license:
+        raise HTTPException(503, f"service_halted_by_license:{st.get('reason', 'unknown')}")
+    if not st.get("valid", False):
+        # Payment/license semantics: invalid license leads to safe degradation
+        raise HTTPException(402, f"license_invalid:{st.get('reason', 'unknown')}")
 
     if not pipeline:
         detail = "Pipeline not ready"

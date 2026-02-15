@@ -14,6 +14,7 @@ pinned: false
 - Commercial Pitch Deck Summary: [docs/COMMERCIAL_PITCH_V1.md](docs/COMMERCIAL_PITCH_V1.md)
 - Stability Acceptance (1200 decisions, 100% consistency): [docs/STABILITY_ACCEPTANCE_REPORT_V1.md](docs/STABILITY_ACCEPTANCE_REPORT_V1.md)
 - Technical Whitepaper Summary: [docs/TECHNICAL_WHITEPAPER_SUMMARY_V1.md](docs/TECHNICAL_WHITEPAPER_SUMMARY_V1.md)
+- Commercial Billing & License Ops: [docs/COMMERCIAL_BILLING_OPERATIONS_V1.md](docs/COMMERCIAL_BILLING_OPERATIONS_V1.md)
 
 ---
 

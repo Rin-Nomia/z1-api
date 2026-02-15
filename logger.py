@@ -34,8 +34,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
+import threading
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -300,6 +302,9 @@ class DataLogger:
     def __init__(self, log_dir: str = "logs"):
         self.log_dir = log_dir
         self.writer = GitHubWriter()
+        os.makedirs(self.log_dir, exist_ok=True)
+        self.usage_dir = os.path.join(self.log_dir, "usage")
+        os.makedirs(self.usage_dir, exist_ok=True)
 
         self._analysis_count = 0
         self._feedback_count = 0
@@ -318,6 +323,14 @@ class DataLogger:
                 "Refusing to start without salted fingerprints."
             )
         print("[DataLogger] LOG_SALT enabled (fingerprints salted).")
+
+        # Signed usage accounting (content-free)
+        self._usage_signing_key = os.environ.get("USAGE_SIGNING_KEY", "").strip() or self._salt
+        self._usage_lock = threading.Lock()
+        self._active_month = _utc_dates()[0]
+        self._usage_by_month: Dict[str, Dict[str, int]] = {
+            self._active_month: {"analysis_count": 0, "feedback_count": 0}
+        }
 
     @staticmethod
     def _new_id(prefix: str) -> str:
@@ -371,6 +384,7 @@ class DataLogger:
 
         self._analysis_count += 1
         self._last_analysis_ts = ts
+        self._record_usage("analysis_count")
 
         if self.writer.enabled:
             ok = self.writer.write_event(category="analysis", event=payload, event_id=event_id)
@@ -397,6 +411,7 @@ class DataLogger:
         }
 
         self._feedback_count += 1
+        self._record_usage("feedback_count")
 
         if self.writer.enabled:
             ok = self.writer.write_event(category="feedback", event=payload, event_id=event_id)
@@ -406,6 +421,7 @@ class DataLogger:
         return {"status": "ok", "feedback_id": event_id, "created_at": ts}
 
     def get_stats(self) -> Dict[str, Any]:
+        usage_snapshot = self.get_usage_snapshot()
         return {
             "logger": {
                 "enabled": self.writer.enabled,
@@ -417,7 +433,88 @@ class DataLogger:
                 "analyses_in_runtime": self._analysis_count,
                 "feedback_in_runtime": self._feedback_count,
             },
+            "usage": usage_snapshot,
             "last_analysis_utc": self._last_analysis_ts,
+        }
+
+    # ----------------------------
+    # Signed Usage Accounting
+    # ----------------------------
+    def _current_month(self) -> str:
+        return _utc_dates()[0]
+
+    def _record_usage(self, key: str) -> None:
+        to_finalize = None
+        with self._usage_lock:
+            now_month = self._current_month()
+            if now_month not in self._usage_by_month:
+                self._usage_by_month[now_month] = {"analysis_count": 0, "feedback_count": 0}
+            if now_month != self._active_month:
+                to_finalize = self._active_month
+                self._active_month = now_month
+            month_obj = self._usage_by_month[now_month]
+            month_obj[key] = int(month_obj.get(key, 0)) + 1
+
+        # Finalize previous month outside lock
+        if to_finalize:
+            try:
+                self.emit_signed_monthly_summary(month=to_finalize)
+            except Exception as e:
+                print(f"[DataLogger] monthly summary finalize failed: {e}")
+
+    def _canonical_bytes(self, payload: Dict[str, Any]) -> bytes:
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    def _sign_payload(self, payload: Dict[str, Any]) -> str:
+        data = self._canonical_bytes(payload)
+        return hmac.new(self._usage_signing_key.encode("utf-8"), data, hashlib.sha256).hexdigest()
+
+    def emit_signed_monthly_summary(self, month: Optional[str] = None) -> Dict[str, Any]:
+        month_key = (month or self._current_month()).strip()
+        with self._usage_lock:
+            counts = dict(self._usage_by_month.get(month_key, {"analysis_count": 0, "feedback_count": 0}))
+
+        payload = {
+            "schema_version": "1.0",
+            "month": month_key,
+            "generated_at_utc": _utc_iso(),
+            "counts": {
+                "analysis_count": int(counts.get("analysis_count", 0)),
+                "feedback_count": int(counts.get("feedback_count", 0)),
+                "total_events": int(counts.get("analysis_count", 0)) + int(counts.get("feedback_count", 0)),
+            },
+            "content_free": True,
+            "signature_algorithm": "HMAC-SHA256",
+        }
+        signature = self._sign_payload(payload)
+
+        summary_path = os.path.join(self.usage_dir, f"{month_key}.summary.json")
+        sig_path = os.path.join(self.usage_dir, f"{month_key}.summary.sig")
+
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        with open(sig_path, "w", encoding="utf-8") as f:
+            f.write(signature + "\n")
+
+        return {
+            "month": month_key,
+            "summary_path": summary_path,
+            "sig_path": sig_path,
+            "signature": signature,
+            "counts": payload["counts"],
+        }
+
+    def get_usage_snapshot(self) -> Dict[str, Any]:
+        month_key = self._current_month()
+        with self._usage_lock:
+            counts = dict(self._usage_by_month.get(month_key, {"analysis_count": 0, "feedback_count": 0}))
+        return {
+            "month": month_key,
+            "analysis_in_month": int(counts.get("analysis_count", 0)),
+            "feedback_in_month": int(counts.get("feedback_count", 0)),
+            "summary_dir": self.usage_dir,
+            "signature_algorithm": "HMAC-SHA256",
+            "signing_key_configured": bool(self._usage_signing_key),
         }
 
 
