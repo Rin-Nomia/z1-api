@@ -21,6 +21,8 @@ pinned: false
 - C3 Cloud Deployment (Render + HTTPS): [docs/CLOUD_DEPLOYMENT_RENDER_V1.md](docs/CLOUD_DEPLOYMENT_RENDER_V1.md)
 - C3 Dashboard Preview: [assets/dashboard_preview.png](assets/dashboard_preview.png)
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Rin-Nomia/continuum-api)
+
 ---
 
 # Continuum API — RIN Protocol

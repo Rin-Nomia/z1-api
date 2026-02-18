@@ -11,6 +11,13 @@ Reason:
 - easy secret management for `LOG_SALT`, `LICENSE_KEY`, admin secrets
 - low ops burden compared with self-managed VM
 
+One-click (Blueprint) link:
+
+`https://render.com/deploy?repo=https://github.com/Rin-Nomia/continuum-api`
+
+Required file already prepared:
+- `render.yaml`
+
 ---
 
 ## Target architecture

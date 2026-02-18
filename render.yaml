@@ -1,0 +1,82 @@
+services:
+  - type: web
+    name: continuum-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: LOG_SALT
+        sync: false
+      - key: LICENSE_KEY
+        sync: false
+      - key: USAGE_SIGNING_KEY
+        sync: false
+      - key: LICENSE_ENFORCEMENT_MODE
+        value: degrade
+      - key: API_PORT
+        value: 8000
+      - key: LICENSE_FILE
+        value: /data/license/license.enc
+      - key: USAGE_DB_PATH
+        value: /data/logs/usage.db
+    disk:
+      name: continuum-data
+      mountPath: /data
+      sizeGB: 5
+
+  - type: pserv
+    name: continuum-c3
+    runtime: docker
+    dockerfilePath: ./Dockerfile.c3
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: LOG_SALT
+        sync: false
+      - key: LICENSE_KEY
+        sync: false
+      - key: USAGE_SIGNING_KEY
+        sync: false
+      - key: C3_ADMIN_PASSWORD_HASH
+        sync: false
+      - key: C3_ADMIN_PASSWORD
+        sync: false
+      - key: C3_LOGIN_MAX_ATTEMPTS
+        value: 5
+      - key: C3_LOCKOUT_SECONDS
+        value: 900
+      - key: C3_SESSION_TTL_SECONDS
+        value: 1800
+      - key: C3_PORT
+        value: 8501
+      - key: C3_BIND_HOST
+        value: 0.0.0.0
+      - key: LICENSE_FILE
+        value: /data/license/license.enc
+      - key: USAGE_DB_PATH
+        value: /data/logs/usage.db
+    disk:
+      name: continuum-data
+      mountPath: /data
+      sizeGB: 5
+
+  - type: web
+    name: c3-gateway
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./deploy/caddy/Dockerfile
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: ACME_EMAIL
+        sync: false
+      - key: API_HOSTNAME
+        sync: false
+      - key: C3_HOSTNAME
+        sync: false
+      - key: C3_BASIC_AUTH_USER
+        value: admin
+      - key: C3_BASIC_AUTH_HASH
+        sync: false
