@@ -1,0 +1,14 @@
+#cloud-config
+package_update: true
+package_upgrade: false
+
+runcmd:
+  - [ bash, -lc, "curl -fsSL https://raw.githubusercontent.com/Rin-Nomia/continuum-api/main/deploy/oracle/bootstrap_oracle_free.sh -o /tmp/bootstrap_oracle_free.sh" ]
+  - [ bash, -lc, "chmod +x /tmp/bootstrap_oracle_free.sh" ]
+  - [ bash, -lc, "RUN_USER=ubuntu REPO_BRANCH=main /tmp/bootstrap_oracle_free.sh" ]
+
+final_message: |
+  Continuum Oracle bootstrap completed.
+  1) SSH into VM
+  2) Edit /opt/continuum-api/.env
+  3) Run /opt/continuum-api/deploy/oracle/up_oracle_stack.sh

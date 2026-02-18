@@ -153,6 +153,7 @@ C3 capabilities:
 
 Reference:
 - `docs/C3_COMMAND_CENTER_V1.md`
+- `docs/CLOUD_DEPLOYMENT_ORACLE_FREE_V1.md`
 - `docs/CLOUD_DEPLOYMENT_RENDER_V1.md`
 
 Container artifacts:
